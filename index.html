@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IKS Mester</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+body { margin:0; font-family:Arial; }
+
+#map { height:100vh; }
+
+/* START */
+#startScreen {
+  position:fixed;
+  inset:0;
+  background:white;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  z-index:3000;
+}
+
+input {
+  padding:8px;
+  margin:5px;
+  width:220px;
+}
+
+/* HOME */
+#homeBtn {
+  position:absolute;
+  top:10px;
+  right:10px;
+  z-index:2000;
+  background:white;
+  border:1px solid #ccc;
+  padding:6px 10px;
+  cursor:pointer;
+  display:none;
+}
+
+/* GAME UI */
+#ui {
+  position:absolute;
+  top:60px;
+  left:10px;
+  background:white;
+  padding:12px;
+  border-radius:10px;
+  border:1px solid #ddd;
+  box-shadow:0 4px 18px rgba(0,0,0,0.12);
+  z-index:1000;
+  display:none;
+  font-size:13px;
+  min-width:240px;
+  line-height:1.6;
+}
+
+/* EXPLORER */
+#panel {
+  position:absolute;
+  top:60px;
+  right:10px;
+  width:260px;
+  background:white;
+  padding:12px;
+  border-radius:10px;
+  border:1px solid #ddd;
+  box-shadow:0 4px 18px rgba(0,0,0,0.12);
+  z-index:1000;
+  display:none;
+  font-size:13px;
+}
+
+/* COUNTDOWN */
+#countdown {
+  position:fixed;
+  inset:0;
+  display:none;
+  justify-content:center;
+  align-items:center;
+  font-size:80px;
+  background:black;
+  color:white;
+  z-index:4000;
+}
+
+button {
+  padding:8px 12px;
+  margin:6px 0;
+  cursor:pointer;
+  border:1px solid #ccc;
+  background:white;
+  border-radius:8px;
+  transition:0.15s;
+}
+
+button:hover { background:#eee; }
+button:active { transform:scale(0.98); }
+
+#ui button { width:100%; }
+
+.leaflet-interactive { cursor:pointer; }
+
+/* STREAK ANIM */
+#streak {
+  transition: all 0.2s ease;
+}
+</style>
+</head>
+
+<body>
+
+<button id="homeBtn" onclick="goHome()">🏠</button>
+
+<!-- START -->
+<div id="startScreen">
+  <h2>IKS Mester</h2>
+  <p style="color:#666">Test hvor godt du kjenner norske IKS-er</p>
+
+  <input id="name" placeholder="Navn">
+  <input id="company" placeholder="Bedrift">
+
+  <button onclick="startGame()">Start spill 🎮</button>
+  <button onclick="startExplorer()">IKS utforsker 🗺️</button>
+</div>
+
+<!-- COUNTDOWN -->
+<div id="countdown">3</div>
+
+<!-- GAME UI -->
+<div id="ui">
+  <div><b>Spiller:</b> <span id="pname"></span></div>
+  <div><b>Bedrift:</b> <span id="pcompany"></span></div>
+  <hr>
+
+  <div><b>IKS:</b> <span id="target"></span></div>
+  <div>Score: <span id="score">0</span></div>
+  <div>Streak: <span id="streak">0</span></div>
+  <div>Tid: <span id="time">0</span>s</div>
+
+  <button onclick="skip()">Skip (-10)</button>
+</div>
+
+<!-- EXPLORER -->
+<div id="panel"></div>
+
+<div id="map"></div>
+
+<script>
+
+const map = L.map('map').setView([64.5,12],5);
+
+map.setMaxBounds([[55,-5],[72,35]]);
+map.setMinZoom(4);
+map.setMaxZoom(8);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+// STATE
+let mode = null;
+let geoLayer;
+
+let remaining = [];
+let currentTarget;
+
+let score = 0;
+let streak = 0;
+
+let startTime;
+let timerInt;
+let timerStarted = false;
+
+let playerName = "";
+let playerCompany = "";
+
+// HOME
+function goHome(){
+  location.reload();
+}
+
+// MODES
+function startGame(){
+  mode = "game";
+  init();
+}
+
+function startExplorer(){
+  mode = "explorer";
+  init();
+}
+
+// INIT
+function init(){
+
+  playerName = document.getElementById("name").value;
+  playerCompany = document.getElementById("company").value;
+
+  document.getElementById("startScreen").style.display = "none";
+  document.getElementById("homeBtn").style.display = "block";
+
+  if(mode === "game"){
+    countdown(startGameLoop);
+  } else {
+    document.getElementById("panel").style.display = "block";
+    loadMap();
+  }
+}
+
+// COUNTDOWN
+function countdown(cb){
+
+  let c = 3;
+  let el = document.getElementById("countdown");
+  el.style.display = "flex";
+  el.innerText = c;
+
+  let i = setInterval(() => {
+    c--;
+    if(c === 0){
+      clearInterval(i);
+      el.style.display = "none";
+      cb();
+    } else {
+      el.innerText = c;
+    }
+  },1000);
+}
+
+// GAME LOOP
+function startGameLoop(){
+
+  document.getElementById("ui").style.display = "block";
+
+  document.getElementById("pname").innerText = playerName;
+  document.getElementById("pcompany").innerText = playerCompany;
+
+  loadMap();
+}
+
+// MAP
+function loadMap(){
+
+fetch("./05.04_spill_iks_4326.geojson")
+.then(r => r.json())
+.then(data => {
+
+  remaining = [...new Set(data.features.map(f => f.properties.IKS))];
+
+  geoLayer = L.geoJSON(data, {
+
+    style: () => ({
+      color:"#333",
+      weight:1,
+      fillColor:"#4a90e2",
+      fillOpacity:0.5
+    }),
+
+    onEachFeature: (feature, layer) => {
+
+      const iks = feature.properties.IKS;
+
+      // EXPLORER
+      if(mode === "explorer"){
+
+        layer.bindTooltip(iks, {sticky:true});
+
+        layer.on("mouseover", () => {
+          layer.setStyle({fillColor:"#2ecc71",fillOpacity:0.8});
+          showPanel(feature.properties);
+        });
+
+        layer.on("mouseout", () => geoLayer.resetStyle(layer));
+      }
+
+      // GAME
+      if(mode === "game"){
+
+        layer.on("click", (e) => {
+
+          if(!timerStarted){
+            startTime = Date.now();
+            timerStarted = true;
+
+            timerInt = setInterval(() => {
+              document.getElementById("time").innerText =
+                Math.floor((Date.now() - startTime)/1000);
+            },1000);
+          }
+
+          const iks = feature.properties.IKS;
+
+          if(!remaining.includes(iks)) return;
+
+          if(iks === currentTarget){
+
+            score += 10 + streak * 3;
+            streak++;
+
+            layer.setStyle({
+              fillColor:"#2ecc71",
+              fillOpacity:0.9
+            });
+
+            remaining = remaining.filter(x => x !== iks);
+
+            next();
+
+          } else {
+
+            streak = 0;
+
+            layer.setStyle({
+              fillColor:"#e74c3c",
+              fillOpacity:0.7
+            });
+
+            setTimeout(() => geoLayer.resetStyle(layer), 400);
+          }
+
+          updateUI();
+
+        });
+
+      }
+
+    }
+
+  }).addTo(map);
+
+  map.fitBounds(geoLayer.getBounds());
+
+  if(mode === "game"){
+    next();
+    updateUI();
+  }
+
+});
+
+}
+
+// GAME LOGIC
+function next(){
+
+  if(remaining.length === 0){
+    clearInterval(timerInt);
+    document.body.innerHTML = `
+      <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;font-family:Arial;">
+        <h1>IKS Mester</h1>
+        <h2>Score: ${score}</h2>
+        <p>Streak: ${streak}</p>
+        <button onclick="location.reload()">Spill igjen</button>
+      </div>
+    `;
+    return;
+  }
+
+  currentTarget = remaining[Math.floor(Math.random()*remaining.length)];
+  document.getElementById("target").innerText = currentTarget;
+}
+
+function updateUI(){
+
+  document.getElementById("score").innerText = score;
+
+  const streakEl = document.getElementById("streak");
+
+  if(streak >= 5){
+    streakEl.innerText = `🔥 ${streak}`;
+    streakEl.style.color = "#e67e22";
+    streakEl.style.fontWeight = "bold";
+  }
+  else if(streak > 0){
+    streakEl.innerText = `${streak}`;
+    streakEl.style.color = "#333";
+    streakEl.style.fontWeight = "normal";
+  }
+  else {
+    streakEl.innerText = "0";
+    streakEl.style.color = "#999";
+    streakEl.style.fontWeight = "normal";
+  }
+}
+
+// SKIP
+function skip(){
+
+  score = Math.max(0, score - 10);
+  streak = 0;
+
+  remaining = remaining.filter(x => x !== currentTarget);
+
+  updateUI();
+  next();
+}
+
+// PANEL
+function showPanel(props){
+
+  let html = `<b>${props.IKS}</b><br><br>`;
+
+  for(let k in props){
+    if(k !== "IKS"){
+      html += `${k}: ${props[k]}<br>`;
+    }
+  }
+
+  document.getElementById("panel").innerHTML = html;
+}
+
+</script>
+</body>
+</html>
