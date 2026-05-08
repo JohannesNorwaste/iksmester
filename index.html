@@ -7,412 +7,993 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <style>
-body { margin:0; font-family:Arial; }
-
-#map { height:100vh; }
-
-/* START */
-#startScreen {
-  position:fixed;
-  inset:0;
-  background:white;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  z-index:3000;
+:root {
+  /*  / avfallsbransje palette */
+  --forest:    #1a3a2a;   /* deep forest green — primary */
+  --moss:      #2d5a3d;   /* moss green */
+  --sage:      #4a7c59;   /* sage */
+  --leaf:      #6aaa7a;   /* light leaf */
+  --nw-blue:   #0077b6;   /* Norwaste blue */
+  --nw-sky:    #0096c7;   /* lighter blue */
+  --sand:      #f5f0e8;   /* warm off-white background */
+  --paper:     #fafaf7;   /* near-white */
+  --ink:       #1c2b1e;   /* near-black with green tint */
+  --muted:     #6b7c6e;   /* muted green-grey text */
+  --border:    rgba(26,58,42,0.12);
+  --border-md: rgba(26,58,42,0.2);
+  --correct:   #2d7a4f;
+  --wrong:     #c0392b;
+  --skip-col:  #b07d2a;
+  --surface:   #ffffff;
+  --glow-g:    0 4px 24px rgba(26,58,42,0.15);
+  --glow-b:    0 4px 24px rgba(0,119,182,0.2);
 }
 
-input {
-  padding:8px;
-  margin:5px;
-  width:220px;
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Sora', sans-serif;
+  background: var(--sand);
+  color: var(--ink);
+  overflow: hidden;
+  height: 100vh;
 }
 
-/* HOME */
+/* ── MAP ── */
+#map {
+  height: 100vh;
+  width: 100%;
+  transition: filter 0.4s ease;
+}
+
+/* Lighter, warmer map tiles — subtle tint, still readable */
+.leaflet-tile {
+  filter: brightness(0.55) sepia(0.25) hue-rotate(60deg) saturate(0.6);
+}
+.leaflet-container { background: #1a2a1c; }
+.leaflet-control-attribution { display: none; }
+.leaflet-control-zoom a {
+  background: var(--surface) !important;
+  color: var(--forest) !important;
+  border-color: var(--border-md) !important;
+  font-family: 'Sora', sans-serif !important;
+}
+
+.paused #map { filter: blur(6px) brightness(0.5); }
+
+/* ── HUD ── */
+#hud {
+  position: absolute;
+  top: 16px; left: 16px;
+  z-index: 1000;
+  display: none;
+  width: 270px;
+  pointer-events: none;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-md);
+  border-radius: 14px;
+  box-shadow: var(--glow-g);
+}
+
+#targetCard {
+  padding: 18px 20px 16px;
+  margin-bottom: 10px;
+  position: relative;
+  overflow: hidden;
+}
+#targetCard::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--forest), var(--nw-blue));
+}
+
+.eyebrow {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+#target {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--forest);
+  line-height: 1.2;
+  min-height: 28px;
+  letter-spacing: -0.01em;
+}
+
+#progressWrap {
+  height: 4px;
+  background: rgba(26,58,42,0.08);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+#progressBar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--forest), var(--nw-blue));
+  border-radius: 99px;
+  transition: width 0.5s ease;
+}
+
+#statsCard {
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  pointer-events: all;
+}
+.stat-block { display: flex; flex-direction: column; gap: 1px; }
+.stat-val {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.v-forest { color: var(--forest); }
+.v-blue   { color: var(--nw-blue); }
+.v-amber  { color: var(--skip-col); }
+.v-sage   { color: var(--sage); }
+
+/* ── ACTION BAR ── */
+#actions {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 8px;
+  z-index: 1000;
+}
+.btn {
+  font-family: 'Sora', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 9px 18px;
+  border-radius: 99px;
+  border: 1px solid var(--border-md);
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+.btn:active { transform: none; }
+.btn.skip  { color: var(--wrong); border-color: rgba(192,57,43,0.25); }
+.btn.pause { color: var(--nw-blue); border-color: rgba(0,119,182,0.25); }
+
 #homeBtn {
-  position:absolute;
-  top:10px;
-  right:10px;
-  z-index:2000;
-  background:white;
-  border:1px solid #ccc;
-  padding:6px 10px;
-  cursor:pointer;
-  display:none;
+  position: absolute;
+  top: 16px; right: 16px;
+  z-index: 2000;
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border-md);
+  border-radius: 99px;
+  padding: 9px 16px;
+  font-family: 'Sora', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+#homeBtn:hover { color: var(--forest); border-color: var(--border-md); }
+
+/* ── TOAST ── */
+#toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%,-50%) scale(0.8);
+  font-size: 72px;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 8000;
+  opacity: 0;
+  text-shadow: 0 4px 24px currentColor;
+}
+#toast.show { animation: toastPop 0.55s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+@keyframes toastPop {
+  0%   { opacity:0; transform:translate(-50%,-50%) scale(0.5); }
+  45%  { opacity:1; transform:translate(-50%,-50%) scale(1.08); }
+  70%  { opacity:1; transform:translate(-50%,-50%) scale(1); }
+  100% { opacity:0; transform:translate(-50%,-50%) scale(0.95); }
 }
 
-/* GAME UI */
-#ui {
-  position:absolute;
-  top:60px;
-  left:10px;
-  background:white;
-  padding:12px;
-  border-radius:10px;
-  border:1px solid #ddd;
-  box-shadow:0 4px 18px rgba(0,0,0,0.12);
-  z-index:1000;
-  display:none;
-  font-size:13px;
-  min-width:240px;
-  line-height:1.6;
+#streakBadge {
+  position: fixed;
+  top: 90px; left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid rgba(176,125,42,0.3);
+  border-radius: 99px;
+  padding: 6px 16px;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--skip-col);
+  opacity: 0;
+  z-index: 7000;
+  pointer-events: none;
+  box-shadow: 0 2px 12px rgba(176,125,42,0.15);
+}
+#streakBadge.show { animation: streakAnim 1s ease forwards; }
+@keyframes streakAnim {
+  0%   { opacity:0; transform:translateX(-50%) translateY(8px); }
+  30%  { opacity:1; transform:translateX(-50%) translateY(0); }
+  70%  { opacity:1; }
+  100% { opacity:0; transform:translateX(-50%) translateY(-16px); }
 }
 
-/* EXPLORER */
-#panel {
-  position:absolute;
-  top:60px;
-  right:10px;
-  width:260px;
-  background:white;
-  padding:12px;
-  border-radius:10px;
-  border:1px solid #ddd;
-  box-shadow:0 4px 18px rgba(0,0,0,0.12);
-  z-index:1000;
-  display:none;
-  font-size:13px;
+.score-popup {
+  position: fixed;
+  font-family: 'Sora', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--correct);
+  pointer-events: none;
+  z-index: 7000;
+  animation: scoreFloat 0.8s ease forwards;
+}
+@keyframes scoreFloat {
+  0%   { opacity:1; transform:translateY(0); }
+  100% { opacity:0; transform:translateY(-50px); }
 }
 
-/* COUNTDOWN */
+#particles { position:fixed; inset:0; pointer-events:none; z-index:7500; overflow:hidden; }
+.particle { position:absolute; border-radius:50%; pointer-events:none; animation:particleFly 0.7s ease forwards; }
+@keyframes particleFly {
+  0%   { opacity:0.9; transform:translate(0,0) scale(1); }
+  100% { opacity:0;   transform:translate(var(--tx),var(--ty)) scale(0); }
+}
+
+/* ── HOME SCREEN ── */
+#startScreen {
+  position: fixed;
+  inset: 0;
+  background: var(--sand);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 9000;
+  gap: 0;
+}
+
+/* Subtle organic texture — no grid */
+#startScreen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 30% 20%, rgba(26,58,42,0.07) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(0,119,182,0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.start-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+  position: relative; z-index: 1;
+  animation: fadeUp 0.5s ease 0.1s both;
+}
+.logo-mark {
+  width: 40px; height: 40px;
+  background: var(--forest);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+}
+.logo-text {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.start-title {
+  font-size: clamp(44px, 8vw, 72px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--forest);
+  text-align: center;
+  position: relative; z-index: 1;
+  animation: fadeUp 0.5s ease 0.2s both;
+  margin-bottom: 8px;
+}
+.start-sub {
+  font-size: 15px;
+  font-weight: 300;
+  color: var(--muted);
+  margin-bottom: 40px;
+  position: relative; z-index: 1;
+  animation: fadeUp 0.5s ease 0.3s both;
+}
+
+/* Mode cards side by side */
+.mode-row {
+  display: flex;
+  gap: 14px;
+  position: relative; z-index: 1;
+  animation: fadeUp 0.5s ease 0.35s both;
+  margin-bottom: 20px;
+}
+
+.mode-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border-md);
+  border-radius: 16px;
+  padding: 22px 22px 18px;
+  width: 210px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: var(--glow-g);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mode-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--forest);
+  box-shadow: 0 8px 28px rgba(26,58,42,0.18);
+}
+.mode-card.primary {
+  background: var(--forest);
+  border-color: var(--forest);
+  color: white;
+}
+.mode-card.primary:hover {
+  background: var(--moss);
+  box-shadow: 0 8px 28px rgba(26,58,42,0.35);
+}
+
+.mode-icon { font-size: 28px; line-height: 1; }
+.mode-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: inherit;
+}
+.mode-card:not(.primary) .mode-title { color: var(--forest); }
+.mode-desc {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 0.7;
+}
+
+/* Input row below cards */
+.input-row {
+  display: flex;
+  gap: 10px;
+  position: relative; z-index: 1;
+  animation: fadeUp 0.5s ease 0.45s both;
+}
+.field {
+  background: var(--surface);
+  border: 1.5px solid var(--border-md);
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-family: 'Sora', sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.2s;
+  width: 200px;
+}
+.field::placeholder { color: var(--muted); }
+.field:focus { border-color: var(--forest); }
+
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(14px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* ── COUNTDOWN ── */
 #countdown {
-  position:fixed;
-  inset:0;
-  display:none;
-  justify-content:center;
-  align-items:center;
-  font-size:80px;
-  background:black;
-  color:white;
-  z-index:4000;
+  position: fixed; inset: 0;
+  display: none; justify-content: center; align-items: center;
+  background: var(--sand); z-index: 9500; flex-direction: column; gap: 12px;
+}
+#countNum {
+  font-size: 160px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--forest);
+  line-height: 1;
+  animation: countPulse 1s ease infinite;
+}
+@keyframes countPulse { 0%,100%{transform:scale(1);}50%{transform:scale(1.04);} }
+#countLabel {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  color: var(--muted);
+  text-transform: uppercase;
 }
 
-button {
-  padding:8px 12px;
-  margin:6px 0;
-  cursor:pointer;
-  border:1px solid #ccc;
-  background:white;
-  border-radius:8px;
-  transition:0.15s;
+/* ── PAUSE OVERLAY ── */
+#pauseOverlay {
+  position: fixed; inset: 0;
+  display: none; justify-content: center; align-items: center;
+  background: rgba(245,240,232,0.92); z-index: 8500;
+  backdrop-filter: blur(4px); flex-direction: column; gap: 10px;
+}
+.pause-icon { font-size: 48px; line-height: 1; }
+.pause-title {
+  font-size: 40px; font-weight: 700; letter-spacing: -0.02em; color: var(--forest);
+}
+.pause-sub {
+  font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.2em;
+  color: var(--muted); text-transform: uppercase;
+}
+.pause-warning {
+  font-size: 13px; color: var(--skip-col); margin-top: 4px;
+  margin-bottom: 16px; opacity: 0.85;
+}
+.resume-btn {
+  background: var(--forest); border: none; border-radius: 12px;
+  padding: 14px 36px; font-family: 'Sora', sans-serif; font-size: 16px;
+  font-weight: 700; color: white; cursor: pointer; transition: all 0.2s;
+  box-shadow: 0 6px 20px rgba(26,58,42,0.3);
+}
+.resume-btn:hover { background: var(--moss); transform: translateY(-2px); box-shadow: 0 10px 28px rgba(26,58,42,0.4); }
+
+/* ── EXPLORER PANEL ── */
+#explorerPanel {
+  position: absolute;
+  top: 16px; left: 16px;
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  width: 270px;
 }
 
-button:hover { background:#eee; }
-button:active { transform:scale(0.98); }
-
-#ui button { width:100%; }
-
-.leaflet-interactive { cursor:pointer; }
-
-/* STREAK ANIM */
-#streak {
-  transition: all 0.2s ease;
+#searchCard {
+  padding: 16px 18px;
 }
+
+.search-wrap {
+  position: relative;
+  margin-top: 10px;
+}
+#searchInput {
+  width: 100%;
+  background: var(--sand);
+  border: 1.5px solid var(--border-md);
+  border-radius: 10px;
+  padding: 9px 14px 9px 34px;
+  font-family: 'Sora', sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.2s;
+}
+#searchInput:focus { border-color: var(--forest); }
+#searchInput::placeholder { color: var(--muted); }
+.search-icon {
+  position: absolute;
+  left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); font-size: 14px; pointer-events: none;
+}
+#searchResults {
+  margin-top: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.result-item {
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--ink);
+  transition: background 0.12s;
+}
+.result-item:hover { background: rgba(26,58,42,0.07); }
+.result-item.active { background: rgba(26,58,42,0.12); font-weight: 600; color: var(--forest); }
+.no-results { font-size: 13px; color: var(--muted); padding: 6px 10px; }
+
+#explorerHint {
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+#explorerHint strong { color: var(--forest); font-weight: 600; }
+
+/* ── TOOLTIP ── */
+#mapTooltip {
+  position: fixed;
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border-md);
+  border-radius: 10px;
+  padding: 7px 13px;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  color: var(--forest);
+  pointer-events: none;
+  z-index: 2000;
+  box-shadow: 0 4px 16px rgba(26,58,42,0.15);
+  white-space: nowrap;
+}
+
+/* ── END SCREEN ── */
+#endScreen {
+  position: fixed; inset: 0;
+  display: none; justify-content: center; align-items: center;
+  background: rgba(245,240,232,0.96); z-index: 9200; backdrop-filter: blur(10px);
+  flex-direction: column; gap: 0;
+}
+#endScreen::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(26,58,42,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+.end-eyebrow {
+  font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.25em;
+  color: var(--muted); text-transform: uppercase; margin-bottom: 10px;
+  position: relative; z-index: 1;
+}
+.end-title {
+  font-size: clamp(52px, 8vw, 80px); font-weight: 700; letter-spacing: -0.03em;
+  color: var(--forest); margin-bottom: 28px; position: relative; z-index: 1; line-height: 1;
+}
+.end-stats {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 12px;
+  margin-bottom: 28px; position: relative; z-index: 1;
+}
+.end-stat {
+  background: var(--surface); border: 1px solid var(--border-md);
+  border-radius: 14px; padding: 18px 16px; text-align: center; min-width: 110px;
+  box-shadow: var(--glow-g);
+}
+.end-stat-val {
+  font-size: 36px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; margin-bottom: 4px;
+}
+.end-stat-label {
+  font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.15em;
+  color: var(--muted); text-transform: uppercase;
+}
+.end-btn {
+  background: var(--forest); border: none; border-radius: 12px; padding: 14px 36px;
+  font-family: 'Sora', sans-serif; font-size: 16px; font-weight: 700; color: white;
+  cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 20px rgba(26,58,42,0.3);
+  position: relative; z-index: 1;
+}
+.end-btn:hover { background: var(--moss); transform: translateY(-2px); }
 </style>
 </head>
-
 <body>
 
-<button id="homeBtn" onclick="goHome()">🏠</button>
+<div id="map"></div>
+<div id="particles"></div>
+<div id="mapTooltip"></div>
 
-<!-- START -->
+<button id="homeBtn" onclick="confirmHome()">← Avslutt</button>
+
+<!-- GAME HUD -->
+<div id="hud">
+  <div id="targetCard" class="card">
+    <div class="eyebrow">Finn kommunen</div>
+    <div id="target">—</div>
+    <div id="progressWrap"><div id="progressBar"></div></div>
+  </div>
+  <div id="statsCard" class="card">
+    <div class="stat-block"><div class="eyebrow">Score</div><div class="stat-val v-forest" id="score">0</div></div>
+    <div class="stat-block"><div class="eyebrow">Streak</div><div class="stat-val v-amber" id="streak">0</div></div>
+    <div class="stat-block"><div class="eyebrow">Presisjon</div><div class="stat-val v-blue" id="accuracy">—</div></div>
+    <div class="stat-block"><div class="eyebrow">Tid</div><div class="stat-val v-sage" id="time">0s</div></div>
+  </div>
+</div>
+
+<!-- EXPLORER PANEL -->
+<div id="explorerPanel">
+  <div id="searchCard" class="card">
+    <div class="eyebrow">Utforsk IKS-kart</div>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input id="searchInput" placeholder="Søk etter IKS..." autocomplete="off" oninput="onSearch()">
+    </div>
+    <div id="searchResults"></div>
+  </div>
+  <div id="explorerHint" class="card">
+    Hover over kommuner for å se hvilken IKS de tilhører.<br>
+    <strong>Søk</strong> for å markere et IKS på kartet.
+  </div>
+</div>
+
+<!-- ACTION BUTTONS -->
+<div id="actions">
+  <button class="btn skip" onclick="skip()">⏭ Hopp over</button>
+  <button class="btn pause" onclick="togglePause()" id="pauseBtn">⏸ Pause</button>
+</div>
+
+<!-- FEEDBACK -->
+<div id="toast"></div>
+<div id="streakBadge"></div>
+
+<!-- START SCREEN -->
 <div id="startScreen">
-  <h2>IKS Mester</h2>
-  <p style="color:#666">Test hvor godt du kjenner norske IKS-er</p>
+  <div class="start-title">IKS Mester</div>
+  <div class="start-sub">Lær deg kommunale avfallsselskaper i Norge</div>
 
-  <input id="name" placeholder="Navn">
-  <input id="company" placeholder="Bedrift">
+  <div class="input-row">
+    <input class="field" id="name" placeholder="Navn" autocomplete="off">
+    <input class="field" id="company" placeholder="Bedrift" autocomplete="off">
+  </div>
 
-  <button onclick="startGame()">Start spill 🎮</button>
-  <button onclick="startExplorer()">IKS utforsker 🗺️</button>
+  <div class="mode-row" style="margin-top:14px;">
+    <div class="mode-card primary" onclick="startGame()">
+      <div class="mode-icon">🎯</div>
+      <div class="mode-title">Spill</div>
+      <div class="mode-desc">Test deg selv — finn IKS-ene på kartet mot klokka</div>
+    </div>
+    <div class="mode-card" onclick="startExplorer()">
+      <div class="mode-icon">🗺</div>
+      <div class="mode-title">Utforsk</div>
+      <div class="mode-desc">Hovre fritt rundt og søk opp IKS-er uten press</div>
+    </div>
+  </div>
 </div>
 
 <!-- COUNTDOWN -->
-<div id="countdown">3</div>
+<div id="countdown"><div id="countNum">3</div><div id="countLabel">Gjør deg klar...</div></div>
 
-<!-- GAME UI -->
-<div id="ui">
-  <div><b>Spiller:</b> <span id="pname"></span></div>
-  <div><b>Bedrift:</b> <span id="pcompany"></span></div>
-  <hr>
-
-  <div><b>IKS:</b> <span id="target"></span></div>
-  <div>Score: <span id="score">0</span></div>
-  <div>Streak: <span id="streak">0</span></div>
-  <div>Tid: <span id="time">0</span>s</div>
-
-  <button onclick="skip()">Skip (-10)</button>
+<!-- PAUSE -->
+<div id="pauseOverlay">
+  <div class="pause-icon">⏸</div>
+  <div class="pause-title">Pause</div>
+  <div class="pause-sub">Spillet er stoppet</div>
+  <div class="pause-warning">⚠ Ny IKS velges automatisk når du fortsetter</div>
+  <button class="resume-btn" onclick="togglePause()">▶ &nbsp;Fortsett spillet</button>
 </div>
 
-<!-- EXPLORER -->
-<div id="panel"></div>
-
-<div id="map"></div>
+<!-- END -->
+<div id="endScreen">
+  <div class="end-eyebrow">Spillet er ferdig</div>
+  <div class="end-title">Fullført!</div>
+  <div class="end-stats">
+    <div class="end-stat"><div class="end-stat-val" id="endScore" style="color:var(--forest)">0</div><div class="end-stat-label">Poeng</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endAcc" style="color:var(--nw-blue)">0%</div><div class="end-stat-label">Presisjon</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endStreak" style="color:var(--skip-col)">0</div><div class="end-stat-label">Best streak</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endTime" style="color:var(--sage)">0s</div><div class="end-stat-label">Tid brukt</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endCorrect" style="color:var(--correct)">0</div><div class="end-stat-label">Riktige</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endSkipped" style="color:var(--muted)">0</div><div class="end-stat-label">Hoppet over</div></div>
+  </div>
+  <button class="end-btn" onclick="location.reload()">Spill igjen →</button>
+</div>
 
 <script>
+// ── Map setup ──
+const map = L.map('map',{zoomControl:true}).setView([64.5,12],5);
+map.setMaxBounds([[55,-5],[73,35]]);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'',maxZoom:18}).addTo(map);
 
-const map = L.map('map').setView([64.5,12],5);
+// ── State ──
+let geoLayer, allIKS=[], remaining=[], currentTarget;
+let score=0, streak=0, maxStreak=0, correct=0, wrong=0, skipped=0;
+let startTime, timerInterval;
+let paused=false, pauseStart=0, pauseTotal=0;
+let totalIKS=0;
+let appMode=''; // 'game' | 'explorer'
+let searchHighlighted=null; // currently highlighted IKS in explorer
 
-map.setMaxBounds([[55,-5],[72,35]]);
-map.setMinZoom(4);
-map.setMaxZoom(8);
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-// STATE
-let mode = null;
-let geoLayer;
-
-let remaining = [];
-let currentTarget;
-
-let score = 0;
-let streak = 0;
-
-let startTime;
-let timerInt;
-let timerStarted = false;
-
-let playerName = "";
-let playerCompany = "";
-
-// HOME
-function goHome(){
-  location.reload();
-}
-
-// MODES
+// ── Mode selection ──
 function startGame(){
-  mode = "game";
-  init();
+  appMode='game';
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('hud').style.display='block';
+  document.getElementById('actions').style.display='flex';
+  document.getElementById('homeBtn').style.display='block';
+  countdown(()=>{
+    startTime=Date.now();
+    timerInterval=setInterval(()=>{
+      if(paused)return;
+      document.getElementById('time').innerText=Math.floor((Date.now()-startTime-pauseTotal)/1000)+'s';
+    },200);
+    loadMap('game');
+  });
 }
 
 function startExplorer(){
-  mode = "explorer";
-  init();
+  appMode='explorer';
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('explorerPanel').style.display='flex';
+  document.getElementById('homeBtn').style.display='block';
+  loadMap('explorer');
 }
 
-// INIT
-function init(){
-
-  playerName = document.getElementById("name").value;
-  playerCompany = document.getElementById("company").value;
-
-  document.getElementById("startScreen").style.display = "none";
-  document.getElementById("homeBtn").style.display = "block";
-
-  if(mode === "game"){
-    countdown(startGameLoop);
-  } else {
-    document.getElementById("panel").style.display = "block";
-    loadMap();
-  }
-}
-
-// COUNTDOWN
+// ── Countdown ──
 function countdown(cb){
-
-  let c = 3;
-  let el = document.getElementById("countdown");
-  el.style.display = "flex";
-  el.innerText = c;
-
-  let i = setInterval(() => {
-    c--;
-    if(c === 0){
-      clearInterval(i);
-      el.style.display = "none";
-      cb();
-    } else {
-      el.innerText = c;
-    }
-  },1000);
+  let c=3;
+  const el=document.getElementById('countdown');
+  const num=document.getElementById('countNum');
+  el.style.display='flex'; num.innerText=c;
+  const i=setInterval(()=>{ c--; if(c===0){clearInterval(i);el.style.display='none';cb();}else num.innerText=c; },1000);
 }
 
-// GAME LOOP
-function startGameLoop(){
+// ── Load GeoJSON ──
+function loadMap(mode){
+  fetch('./05.04_spill_iks_4326.geojson').then(r=>r.json()).then(data=>{
+    allIKS=[...new Set(data.features.map(f=>f.properties.IKS))].sort();
+    remaining=[...allIKS];
+    totalIKS=remaining.length;
 
-  document.getElementById("ui").style.display = "block";
+    geoLayer=L.geoJSON(data,{
+      style:()=>defaultStyle(),
+      onEachFeature:(f,l)=>{
+        const iks=f.properties.IKS;
+        l._iksName=iks;
 
-  document.getElementById("pname").innerText = playerName;
-  document.getElementById("pcompany").innerText = playerCompany;
+        l.on('mouseover',e=>{
+          if(l._locked)return;
+          if(appMode==='explorer'||!paused){
+            l.setStyle(hoverStyle());
+          }
+          if(appMode==='explorer'){
+            showTooltip(e.originalEvent.clientX, e.originalEvent.clientY, iks);
+          }
+        });
+        l.on('mousemove',e=>{
+          if(appMode==='explorer') moveTooltip(e.originalEvent.clientX, e.originalEvent.clientY);
+        });
+        l.on('mouseout',()=>{
+          hideTooltip();
+          if(l._locked)return;
+          // Don't reset search-highlighted layers
+          if(appMode==='explorer' && searchHighlighted && l._iksName===searchHighlighted){
+            l.setStyle(highlightStyle());
+            return;
+          }
+          geoLayer.resetStyle(l);
+        });
+        l.on('click',e=>{ if(appMode==='game') handleClick(iks,l,e); });
+      }
+    }).addTo(map);
 
-  loadMap();
+    map.fitBounds(geoLayer.getBounds(),{padding:[20,20]});
+    if(mode==='game'){ next(); updateUI(); }
+  });
 }
 
-// MAP
-function loadMap(){
+function defaultStyle(){ return {color:'#1a3a2a',weight:1.2,fillColor:'#2d5a3d',fillOpacity:0.55}; }
+function hoverStyle()  { return {color:'#0077b6',weight:2,fillColor:'#4a7c59',fillOpacity:0.8}; }
+function highlightStyle(){ return {color:'#0077b6',weight:2.5,fillColor:'#0077b6',fillOpacity:0.45}; }
 
-fetch("./05.04_spill_iks_4326.geojson")
-.then(r => r.json())
-.then(data => {
-
-  remaining = [...new Set(data.features.map(f => f.properties.IKS))];
-
-  geoLayer = L.geoJSON(data, {
-
-    style: () => ({
-      color:"#333",
-      weight:1,
-      fillColor:"#4a90e2",
-      fillOpacity:0.5
-    }),
-
-    onEachFeature: (feature, layer) => {
-
-      const iks = feature.properties.IKS;
-
-      // EXPLORER
-      if(mode === "explorer"){
-
-        layer.bindTooltip(iks, {sticky:true});
-
-        layer.on("mouseover", () => {
-          layer.setStyle({fillColor:"#2ecc71",fillOpacity:0.8});
-          showPanel(feature.properties);
-        });
-
-        layer.on("mouseout", () => geoLayer.resetStyle(layer));
-      }
-
-      // GAME
-      if(mode === "game"){
-
-        layer.on("click", (e) => {
-
-          if(!timerStarted){
-            startTime = Date.now();
-            timerStarted = true;
-
-            timerInt = setInterval(() => {
-              document.getElementById("time").innerText =
-                Math.floor((Date.now() - startTime)/1000);
-            },1000);
-          }
-
-          const iks = feature.properties.IKS;
-
-          if(!remaining.includes(iks)) return;
-
-          if(iks === currentTarget){
-
-            score += 10 + streak * 3;
-            streak++;
-
-            layer.setStyle({
-              fillColor:"#2ecc71",
-              fillOpacity:0.9
-            });
-
-            remaining = remaining.filter(x => x !== iks);
-
-            next();
-
-          } else {
-
-            streak = 0;
-
-            layer.setStyle({
-              fillColor:"#e74c3c",
-              fillOpacity:0.7
-            });
-
-            setTimeout(() => geoLayer.resetStyle(layer), 400);
-          }
-
-          updateUI();
-
-        });
-
-      }
-
-    }
-
-  }).addTo(map);
-
-  map.fitBounds(geoLayer.getBounds());
-
-  if(mode === "game"){
+// ── Game click ──
+function handleClick(iks,l,e){
+  if(paused)return;
+  if(iks===currentTarget){
+    correct++; streak++; maxStreak=Math.max(maxStreak,streak);
+    const bonus=Math.min(streak,10); score+=10+bonus;
+    l._locked=true;
+    l.setStyle({color:'#1a5c35',weight:2,fillColor:'#2d7a4f',fillOpacity:0.8});
+    remaining=remaining.filter(x=>x!==iks);
+    showToast('✓','#2d7a4f');
+    showScorePopup(e.originalEvent.clientX,e.originalEvent.clientY,`+${10+bonus}`);
+    spawnParticles(e.originalEvent.clientX,e.originalEvent.clientY,'#2d7a4f');
+    if(streak>1)showStreakBadge(streak);
     next();
-    updateUI();
+  } else {
+    wrong++; streak=0;
+    l.setStyle({color:'#8b2020',weight:2,fillColor:'#c0392b',fillOpacity:0.6});
+    setTimeout(()=>{ if(!l._locked)geoLayer.resetStyle(l); },500);
+    showToast('✗','#c0392b');
+    spawnParticles(e.originalEvent.clientX,e.originalEvent.clientY,'#c0392b');
   }
-
-});
-
-}
-
-// GAME LOGIC
-function next(){
-
-  if(remaining.length === 0){
-    clearInterval(timerInt);
-    document.body.innerHTML = `
-      <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;font-family:Arial;">
-        <h1>IKS Mester</h1>
-        <h2>Score: ${score}</h2>
-        <p>Streak: ${streak}</p>
-        <button onclick="location.reload()">Spill igjen</button>
-      </div>
-    `;
-    return;
-  }
-
-  currentTarget = remaining[Math.floor(Math.random()*remaining.length)];
-  document.getElementById("target").innerText = currentTarget;
-}
-
-function updateUI(){
-
-  document.getElementById("score").innerText = score;
-
-  const streakEl = document.getElementById("streak");
-
-  if(streak >= 5){
-    streakEl.innerText = `🔥 ${streak}`;
-    streakEl.style.color = "#e67e22";
-    streakEl.style.fontWeight = "bold";
-  }
-  else if(streak > 0){
-    streakEl.innerText = `${streak}`;
-    streakEl.style.color = "#333";
-    streakEl.style.fontWeight = "normal";
-  }
-  else {
-    streakEl.innerText = "0";
-    streakEl.style.color = "#999";
-    streakEl.style.fontWeight = "normal";
-  }
-}
-
-// SKIP
-function skip(){
-
-  score = Math.max(0, score - 10);
-  streak = 0;
-
-  remaining = remaining.filter(x => x !== currentTarget);
-
   updateUI();
-  next();
 }
 
-// PANEL
-function showPanel(props){
+// ── Next target ──
+function next(){
+  if(remaining.length===0){ end(); return; }
+  currentTarget=remaining[Math.floor(Math.random()*remaining.length)];
+  animateTarget(currentTarget);
+}
 
-  let html = `<b>${props.IKS}</b><br><br>`;
+function animateTarget(txt){
+  const el=document.getElementById('target');
+  el.style.opacity='0'; el.style.transform='translateY(5px)';
+  setTimeout(()=>{
+    el.innerText=txt;
+    el.style.transition='all 0.2s ease';
+    el.style.opacity='1'; el.style.transform='translateY(0)';
+  },70);
+}
 
-  for(let k in props){
-    if(k !== "IKS"){
-      html += `${k}: ${props[k]}<br>`;
+// ── Skip ──
+function skip(){
+  if(paused)return;
+  skipped++; streak=0; score=Math.max(0,score-5);
+  geoLayer.eachLayer(l=>{
+    if(l.feature?.properties?.IKS===currentTarget){
+      l._locked=true;
+      l.setStyle({color:'#8a6020',weight:2,fillColor:'#b07d2a',fillOpacity:0.65});
+    }
+  });
+  remaining=remaining.filter(x=>x!==currentTarget);
+  next(); updateUI();
+}
+
+// ── Update UI ──
+function updateUI(){
+  document.getElementById('score').innerText=score;
+  document.getElementById('streak').innerText=streak;
+  const total=correct+wrong+skipped;
+  document.getElementById('accuracy').innerText=total===0?'—':Math.round((correct/total)*100)+'%';
+  document.getElementById('progressBar').style.width=Math.round((correct/totalIKS)*100)+'%';
+}
+
+// ── Pause (anti-cheat) ──
+function togglePause(){
+  paused=!paused;
+  if(paused){
+    pauseStart=Date.now();
+    document.body.classList.add('paused');
+    document.getElementById('pauseOverlay').style.display='flex';
+  } else {
+    pauseTotal+=Date.now()-pauseStart;
+    document.body.classList.remove('paused');
+    document.getElementById('pauseOverlay').style.display='none';
+    // Anti-cheat: pick different target
+    if(remaining.length>1){
+      const others=remaining.filter(x=>x!==currentTarget);
+      currentTarget=others[Math.floor(Math.random()*others.length)];
+      animateTarget(currentTarget);
     }
   }
-
-  document.getElementById("panel").innerHTML = html;
 }
 
+// ── Explorer search ──
+function onSearch(){
+  const q=document.getElementById('searchInput').value.trim().toLowerCase();
+  const res=document.getElementById('searchResults');
+  res.innerHTML='';
+
+  // Clear previous highlight
+  if(searchHighlighted){ clearHighlight(); searchHighlighted=null; }
+
+  if(!q){ return; }
+
+  const matches=allIKS.filter(iks=>iks.toLowerCase().includes(q));
+  if(matches.length===0){
+    res.innerHTML='<div class="no-results">Ingen treff</div>'; return;
+  }
+  matches.slice(0,8).forEach(iks=>{
+    const div=document.createElement('div');
+    div.className='result-item';
+    div.innerText=iks;
+    div.onclick=()=>selectSearchResult(iks, div);
+    res.appendChild(div);
+  });
+}
+
+function selectSearchResult(iks, el){
+  // Clear old
+  if(searchHighlighted) clearHighlight();
+  document.querySelectorAll('.result-item').forEach(r=>r.classList.remove('active'));
+  el.classList.add('active');
+  searchHighlighted=iks;
+
+  // Highlight on map + zoom
+  const layers=[];
+  geoLayer.eachLayer(l=>{
+    if(l.feature?.properties?.IKS===iks){
+      l.setStyle(highlightStyle());
+      layers.push(l);
+    }
+  });
+  if(layers.length>0){
+    const group=L.featureGroup(layers);
+    map.fitBounds(group.getBounds(),{padding:[60,60],maxZoom:10});
+  }
+}
+
+function clearHighlight(){
+  if(!searchHighlighted)return;
+  geoLayer.eachLayer(l=>{
+    if(l.feature?.properties?.IKS===searchHighlighted && !l._locked){
+      geoLayer.resetStyle(l);
+    }
+  });
+}
+
+// ── Tooltip ──
+function showTooltip(x,y,text){
+  const t=document.getElementById('mapTooltip');
+  t.innerText=text; t.style.display='block';
+  t.style.left=(x+14)+'px'; t.style.top=(y-12)+'px';
+}
+function moveTooltip(x,y){
+  const t=document.getElementById('mapTooltip');
+  t.style.left=(x+14)+'px'; t.style.top=(y-12)+'px';
+}
+function hideTooltip(){
+  document.getElementById('mapTooltip').style.display='none';
+}
+
+// ── End ──
+function end(){
+  clearInterval(timerInterval);
+  const totalSec=Math.floor((Date.now()-startTime-pauseTotal)/1000);
+  const total=correct+wrong+skipped;
+  const acc=total===0?0:Math.round((correct/total)*100);
+  document.getElementById('endScore').innerText=score;
+  document.getElementById('endAcc').innerText=acc+'%';
+  document.getElementById('endStreak').innerText=maxStreak;
+  document.getElementById('endTime').innerText=totalSec+'s';
+  document.getElementById('endCorrect').innerText=correct;
+  document.getElementById('endSkipped').innerText=skipped;
+  document.getElementById('endScreen').style.display='flex';
+  spawnParticles(window.innerWidth/2,window.innerHeight/2,'#2d7a4f',24);
+  setTimeout(()=>spawnParticles(window.innerWidth/2,window.innerHeight/2,'#0077b6',16),250);
+}
+
+// ── Toast ──
+function showToast(text,color){
+  const el=document.getElementById('toast');
+  el.innerText=text; el.style.color=color;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+
+// ── Score popup ──
+function showScorePopup(x,y,text){
+  const el=document.createElement('div'); el.className='score-popup';
+  el.innerText=text; el.style.left=(x-16)+'px'; el.style.top=(y-36)+'px';
+  document.body.appendChild(el); setTimeout(()=>el.remove(),800);
+}
+
+// ── Streak badge ──
+function showStreakBadge(n){
+  const msgs=['','','🔥 x2','🔥 x3','⚡ x4','⚡ x5','💥 x6','💥 x7','🌟 x8','🌟 x9','👑 x10'];
+  const el=document.getElementById('streakBadge');
+  el.innerText=(msgs[Math.min(n,10)]||`👑 x${n}`)+' streak!';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+
+// ── Particles ──
+function spawnParticles(x,y,color,count=10){
+  const c=document.getElementById('particles');
+  for(let i=0;i<count;i++){
+    const p=document.createElement('div'); p.className='particle';
+    const sz=Math.random()*7+3, ang=Math.random()*Math.PI*2, dist=Math.random()*100+30;
+    p.style.cssText=`width:${sz}px;height:${sz}px;background:${color};left:${x}px;top:${y}px;--tx:${Math.cos(ang)*dist}px;--ty:${Math.sin(ang)*dist}px;animation-delay:${Math.random()*0.1}s;animation-duration:${0.45+Math.random()*0.35}s;`;
+    c.appendChild(p); setTimeout(()=>p.remove(),800);
+  }
+}
+
+// ── Confirm home ──
+function confirmHome(){ if(confirm('Avslutt?')) location.reload(); }
+
+// ── Keys ──
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&appMode==='game'){ e.preventDefault(); togglePause(); }
+  if(e.code==='KeyS'&&appMode==='game'&&!paused) skip();
+});
 </script>
 </body>
 </html>
