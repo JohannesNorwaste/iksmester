@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>IKS Mester – Coming Soon</title>
+
+<style>
+
+body{
+  margin:0;
+  height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:linear-gradient(135deg,#050a07,#0b1a12);
+  font-family:Arial, sans-serif;
+  color:#e6f4ea;
+  text-align:center;
+  overflow:hidden;
+}
+
+/* green system glow */
+.glow{
+  position:absolute;
+  width:600px;
+  height:600px;
+  background:radial-gradient(circle,rgba(45,122,79,0.25),transparent 60%);
+  animation:float 6s ease-in-out infinite;
+  filter:blur(45px);
+}
+
+@keyframes float{
+  0%,100%{transform:translateY(-20px);}
+  50%{transform:translateY(20px);}
+}
+
+.container{
+  z-index:2;
+  max-width:600px;
+  padding:20px;
+}
+
+h1{
+  font-size:54px;
+  margin:0;
+  font-weight:900;
+  color:#dff5e6;
+  letter-spacing:1px;
+}
+
+p{
+  font-size:18px;
+  color:#a9cbb5;
+  margin-top:12px;
+  line-height:1.5;
+}
+
+.badge{
+  display:inline-block;
+  margin-top:20px;
+  padding:8px 14px;
+  border:1px solid rgba(45,122,79,0.35);
+  border-radius:999px;
+  font-size:13px;
+  color:#7fcf9a;
+  background:rgba(45,122,79,0.08);
+}
+
+.countdown{
+  margin-top:30px;
+  font-size:14px;
+  color:#6ea884;
+}
+
+.small{
+  font-size:12px;
+  margin-top:40px;
+  opacity:0.5;
+  color:#8fb79c;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="glow"></div>
+
+<div class="container">
+
+  <div class="badge">🚧 KOMMER SNART 🚧</div>
+
+  <h1>IKS Mester</h1>
+
+  <p>
+    HVOR GODT KJENNER DU AVFALLSNORGE?
+    <br><br>
+    Spillet du har ventet på
+  </p>
+
+  <div class="countdown">
+    ⚡ 19.05.2026 ⚡
+  </div>
+
+  <div class="small">
+    Følg med...
+  </div>
+
+</div>
+
+</body>
+</html>
