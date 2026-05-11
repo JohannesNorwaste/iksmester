@@ -3,9 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IKS Mester</title>
 
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>IKS Mester – Coming Soon</title>
 
 <style>
 
@@ -13,97 +12,73 @@ body{
   margin:0;
   height:100vh;
   display:flex;
-  align-items:center;
   justify-content:center;
-  background:#050a07;
-  color:#cfe7d6;
-  font-family:'DM Mono', monospace;
+  align-items:center;
+  background:linear-gradient(135deg,#050a07,#0b1a12);
+  font-family:Arial, sans-serif;
+  color:#e6f4ea;
+  text-align:center;
   overflow:hidden;
 }
 
-/* subtle green depth glow */
-body::before{
-  content:'';
+/* green system glow */
+.glow{
   position:absolute;
-  inset:-40%;
-  background:
-    radial-gradient(circle at 30% 30%, rgba(26,58,42,0.35), transparent 45%),
-    radial-gradient(circle at 70% 60%, rgba(0,119,182,0.08), transparent 50%);
-  filter:blur(40px);
+  width:600px;
+  height:600px;
+  background:radial-gradient(circle,rgba(45,122,79,0.25),transparent 60%);
+  animation:float 6s ease-in-out infinite;
+  filter:blur(45px);
 }
 
-.wrap{
-  text-align:center;
+@keyframes float{
+  0%,100%{transform:translateY(-20px);}
+  50%{transform:translateY(20px);}
+}
+
+.container{
   z-index:2;
-}
-
-/* logo block */
-.logo{
-  width:86px;
-  height:86px;
-  margin:0 auto 26px;
-  background:#0e1a12;
-  border:1px solid rgba(45,90,61,0.6);
-  border-radius:18px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color:#2d7a4f;
-  font-size:28px;
-  box-shadow:0 0 30px rgba(26,58,42,0.25);
+  max-width:600px;
+  padding:20px;
 }
 
 h1{
+  font-size:54px;
   margin:0;
-  font-size:46px;
-  letter-spacing:0.18em;
+  font-weight:900;
   color:#dff5e6;
+  letter-spacing:1px;
 }
 
-.sub{
-  margin-top:10px;
-  font-size:11px;
-  letter-spacing:0.35em;
-  color:#6b8c76;
+p{
+  font-size:18px;
+  color:#a9cbb5;
+  margin-top:12px;
+  line-height:1.5;
 }
 
-.line{
-  margin-top:26px;
-  font-size:12px;
-  color:#9fb7a6;
-  opacity:0.9;
-}
-
-.glow{
-  margin-top:6px;
-  font-size:12px;
-  color:#2d7a4f;
-  letter-spacing:0.25em;
-  opacity:0.8;
-}
-
-button{
-  margin-top:40px;
-  padding:12px 30px;
+.badge{
+  display:inline-block;
+  margin-top:20px;
+  padding:8px 14px;
+  border:1px solid rgba(45,122,79,0.35);
   border-radius:999px;
-  background:transparent;
-  border:1px solid rgba(45,90,61,0.6);
-  color:#dff5e6;
-  cursor:pointer;
-  letter-spacing:0.25em;
-  transition:0.2s;
+  font-size:13px;
+  color:#7fcf9a;
+  background:rgba(45,122,79,0.08);
 }
 
-button:hover{
-  border-color:#2d7a4f;
-  box-shadow:0 0 20px rgba(45,122,79,0.25);
-  transform:translateY(-2px);
+.countdown{
+  margin-top:30px;
+  font-size:14px;
+  color:#6ea884;
 }
 
 .small{
-  margin-top:18px;
-  font-size:10px;
-  color:#4e6a57;
+  font-size:12px;
+  margin-top:40px;
+  opacity:0.5;
+  color:#8fb79c;
 }
 
 </style>
@@ -111,27 +86,27 @@ button:hover{
 
 <body>
 
-<div class="wrap">
+<div class="glow"></div>
 
-  <div class="logo">♻</div>
+<div class="container">
+
+  <div class="badge">🚧 KOMMER SNART 🚧</div>
 
   <h1>IKS Mester</h1>
 
-  <div class="sub">HVEM KJENNER AVFALLSNORGE BEST?</div>
-
-  <div class="line">
+  <p>
+    HVOR GODT KJENNER DU AVFALLSNORGE?
+    <br><br>
     Spillet du har ventet på
+  </p>
+
+  <div class="countdown">
+    ⚡ 19.05.2026 ⚡
   </div>
 
-  <div class="glow">
-    NORGE / AVFALL IKS
+  <div class="small">
+    Følg med...
   </div>
-
-  <button onclick="location.href='https://iksmester.no'">
-    ENTER
-  </button>
-
-  <div class="small">v0.1 — LIVE</div>
 
 </div>
 
