@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IKS Mester</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg:        #0b1812;
+  --bg2:       #0f2018;
+  --surface:   #152a1e;
+  --surface2:  #1c3628;
+  --surface3:  #243d2f;
+  --border:    rgba(106,170,122,0.12);
+  --border-md: rgba(106,170,122,0.22);
+  --border-hi: rgba(106,170,122,0.4);
+  --forest:    #6aaa7a;
+  --leaf:      #8fcf9e;
+  --sage:      #4a7c59;
+  --nw-blue:   #2ea8d5;
+  --amber:     #d4a84b;
+  --amber-dim: rgba(212,168,75,0.15);
+  --correct:   #3ecf6e;
+  --wrong:     #e05555;
+  --text:      #d4ead9;
+  --text-dim:  rgba(180,220,185,0.45);
+  --text-mid:  rgba(180,220,185,0.7);
+  --glow-g:    0 4px 24px rgba(16,50,28,0.8);
+  --gold:      #c9a84c;
+  --silver:    #8a9a8e;
+  --bronze:    #a07050;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Sora', sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+
+/* MAP */
+#map { height: 100vh; width: 100%; transition: filter 0.4s ease; }
+.leaflet-tile { filter: brightness(0.45) saturate(0.7) hue-rotate(50deg); }
+.leaflet-container { background: #060e09; }
+.leaflet-control-attribution { display: none; }
+.leaflet-control-zoom a { background: var(--surface) !important; color: var(--forest) !important; border-color: var(--border-md) !important; font-family: 'Sora', sans-serif !important; }
+.paused #map { filter: blur(7px) brightness(0.25); }
+
+/* CARDS */
+.card { background: rgba(21,42,30,0.92); border: 1px solid var(--border-md); border-radius: 14px; box-shadow: var(--glow-g); backdrop-filter: blur(12px); }
+
+/* HUD */
+#hud { position: absolute; top: 16px; left: 16px; z-index: 1000; display: none; width: 260px; pointer-events: none; }
+
+#targetCard { padding: 16px 18px 14px; margin-bottom: 10px; position: relative; overflow: hidden; transition: box-shadow 0.3s, border-color 0.3s; }
+#targetCard::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--forest), var(--nw-blue)); }
+
+/* Hot streak glow on target card */
+#targetCard.hot1 { border-color: rgba(212,168,75,0.35); box-shadow: 0 0 16px rgba(212,168,75,0.12); }
+#targetCard.hot2 { border-color: rgba(212,168,75,0.6); box-shadow: 0 0 28px rgba(212,168,75,0.25); animation: hotPulse 1.4s ease-in-out infinite; }
+@keyframes hotPulse { 0%,100%{ box-shadow: 0 0 24px rgba(212,168,75,0.2); } 50%{ box-shadow: 0 0 40px rgba(212,168,75,0.45); } }
+
+/* Time drain bar under target */
+#timeBar { height: 3px; background: rgba(106,170,122,0.12); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+#timeBarFill { height: 100%; width: 100%; border-radius: 99px; transition: background 0.3s; background: var(--forest); }
+
+.eyebrow { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 5px; }
+#target { font-size: 21px; font-weight: 700; color: var(--text); line-height: 1.2; min-height: 26px; letter-spacing: -0.01em; }
+
+#progressWrap { height: 3px; background: rgba(106,170,122,0.1); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+#progressBar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--forest), var(--nw-blue)); border-radius: 99px; transition: width 0.5s ease; }
+
+#statsCard { padding: 12px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; pointer-events: all; }
+.stat-block { display: flex; flex-direction: column; gap: 1px; }
+.stat-val { font-size: 20px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; transition: transform 0.15s; }
+.stat-val.bump { animation: scoreBump 0.3s ease; }
+@keyframes scoreBump { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1)} }
+.v-leaf  { color: var(--leaf); }
+.v-blue  { color: var(--nw-blue); }
+.v-amber { color: var(--amber); }
+.v-sage  { color: #7ab89a; }
+
+/* STREAK BATTERY — right sidebar */
+#battery {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+#batteryWrap {
+  width: 28px;
+  height: 160px;
+  background: rgba(21,42,30,0.9);
+  border: 1px solid var(--border-md);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  backdrop-filter: blur(8px);
+}
+/* battery nub */
+#batteryWrap::before {
+  content: '';
+  position: absolute;
+  top: -6px; left: 50%;
+  transform: translateX(-50%);
+  width: 10px; height: 6px;
+  background: var(--border-md);
+  border-radius: 3px 3px 0 0;
+}
+#batteryFill {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 0%;
+  background: linear-gradient(to top, var(--correct), var(--forest));
+  transition: height 0.35s cubic-bezier(0.34,1.3,0.64,1), background 0.3s;
+  border-radius: 0 0 8px 8px;
+}
+#batteryFill.full { background: linear-gradient(to top, #ffdd44, var(--amber)); }
+#batteryLabel {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+}
+#batteryCount {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--forest);
+}
+
+/* BONUS FLASH */
+#bonusFlash {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Sora', sans-serif;
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--amber);
+  text-shadow: 0 0 40px var(--amber);
+  pointer-events: none;
+  z-index: 8500;
+  opacity: 0;
+}
+#bonusFlash.show { animation: bonusPop 1.2s cubic-bezier(0.34,1.4,0.64,1) forwards; }
+@keyframes bonusPop {
+  0%  { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
+  30% { opacity:1; transform:translate(-50%,-60%) scale(1.1); }
+  70% { opacity:1; transform:translate(-50%,-65%) scale(1); }
+  100%{ opacity:0; transform:translate(-50%,-80%) scale(0.9); }
+}
+
+/* BIG STREAK NUMBER */
+#bigStreak {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  font-size: 120px;
+  font-weight: 800;
+  pointer-events: none;
+  z-index: 7800;
+  opacity: 0;
+  letter-spacing: -0.05em;
+  text-shadow: 0 0 60px currentColor;
+}
+#bigStreak.show { animation: bigStreakPop 0.9s cubic-bezier(0.34,1.3,0.64,1) forwards; }
+@keyframes bigStreakPop {
+  0%  { opacity:0; transform:translate(-50%,-50%) scale(0.3); }
+  40% { opacity:0.9; transform:translate(-50%,-50%) scale(1.05); }
+  70% { opacity:0.9; transform:translate(-50%,-50%) scale(1); }
+  100%{ opacity:0; transform:translate(-50%,-50%) scale(0.95); }
+}
+
+/* MUTE BUTTON */
+#muteBtn {
+  position: absolute;
+  bottom: 20px;
+  right: 16px;
+  z-index: 2000;
+  display: none;
+  background: rgba(21,42,30,0.85);
+  border: 1px solid var(--border-md);
+  border-radius: 99px;
+  padding: 7px 14px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  backdrop-filter: blur(8px);
+  line-height: 1;
+}
+#muteBtn:hover { border-color: var(--border-hi); transform: scale(1.05); }
+
+/* ACTION BUTTONS */
+#actions { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: none; gap: 8px; z-index: 1000; }
+.btn { font-family: 'Sora', sans-serif; font-weight: 600; font-size: 13px; padding: 9px 18px; border-radius: 99px; border: 1px solid var(--border-md); cursor: pointer; transition: all 0.15s; background: rgba(21,42,30,0.9); color: var(--text-mid); backdrop-filter: blur(8px); box-shadow: 0 2px 12px rgba(0,0,0,0.3); }
+.btn:hover { transform: translateY(-1px); border-color: var(--border-hi); color: var(--text); }
+.btn:active { transform: none; }
+.btn.skip  { color: #e07070; border-color: rgba(224,85,85,0.25); }
+.btn.pause { color: var(--nw-blue); border-color: rgba(46,168,213,0.25); }
+.btn.hint  { color: var(--amber); border-color: rgba(212,168,75,0.3); }
+.btn.hint:hover { background: rgba(212,168,75,0.08); }
+.btn.hint:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+.home-pause-btn { background: transparent; border: 1px solid var(--border-md); border-radius: 12px; padding: 11px 28px; font-family: 'Sora', sans-serif; font-size: 14px; font-weight: 600; color: var(--text-dim); cursor: pointer; transition: all 0.2s; margin-top: 6px; }
+.home-pause-btn:hover { border-color: rgba(224,85,85,0.4); color: #fca5a5; }
+
+#homeBtn { position: absolute; top: 16px; right: 16px; z-index: 2000; display: none; background: rgba(21,42,30,0.85); border: 1px solid var(--border-md); border-radius: 99px; padding: 8px 16px; font-family: 'Sora', sans-serif; font-size: 13px; font-weight: 500; color: var(--text-dim); cursor: pointer; transition: all 0.15s; backdrop-filter: blur(8px); }
+#homeBtn:hover { color: var(--text); border-color: var(--border-hi); }
+
+/* TOAST */
+#toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) scale(0.8); font-size: 72px; font-weight: 800; pointer-events: none; z-index: 8000; opacity: 0; text-shadow: 0 0 40px currentColor; }
+#toast.show { animation: toastPop 0.55s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+@keyframes toastPop {
+  0%  { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
+  45% { opacity:1; transform:translate(-50%,-50%) scale(1.1); }
+  70% { opacity:1; transform:translate(-50%,-50%) scale(1); }
+  100%{ opacity:0; transform:translate(-50%,-50%) scale(0.95); }
+}
+
+#streakBadge { position: fixed; top: 90px; left: 50%; transform: translateX(-50%); background: var(--amber-dim); border: 1px solid rgba(212,168,75,0.35); border-radius: 99px; padding: 6px 18px; font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: 0.1em; color: var(--amber); opacity: 0; z-index: 7000; pointer-events: none; box-shadow: 0 0 20px rgba(212,168,75,0.2); }
+#streakBadge.show { animation: streakAnim 1s ease forwards; }
+@keyframes streakAnim { 0%{opacity:0;transform:translateX(-50%) translateY(10px)} 30%{opacity:1;transform:translateX(-50%) translateY(0)} 70%{opacity:1} 100%{opacity:0;transform:translateX(-50%) translateY(-16px)} }
+
+.score-popup { position: fixed; font-family: 'DM Mono', monospace; font-weight: 700; font-size: 22px; color: var(--correct); text-shadow: 0 0 16px var(--correct); pointer-events: none; z-index: 7000; animation: scoreFloat 0.8s ease forwards; }
+@keyframes scoreFloat { 0%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-60px)} }
+
+#particles { position:fixed; inset:0; pointer-events:none; z-index:7500; overflow:hidden; }
+.particle { position:absolute; border-radius:50%; pointer-events:none; animation:particleFly 0.7s ease forwards; }
+@keyframes particleFly { 0%{opacity:0.9;transform:translate(0,0) scale(1)} 100%{opacity:0;transform:translate(var(--tx),var(--ty)) scale(0)} }
+
+/* CONFETTI */
+#confetti { position:fixed; inset:0; pointer-events:none; z-index:9300; overflow:hidden; }
+.confetto { position:absolute; width:8px; height:12px; border-radius:2px; opacity:0; animation: confettiFall var(--dur) var(--delay) ease-in forwards; }
+@keyframes confettiFall {
+  0%  { opacity:1; transform:translateY(-20px) rotate(0deg) scale(1); }
+  80% { opacity:1; }
+  100%{ opacity:0; transform:translateY(110vh) rotate(var(--spin)) scale(0.6); }
+}
+.spark { position:absolute; border-radius:50%; pointer-events:none; animation: sparkFly var(--dur) var(--delay) ease-out forwards; }
+@keyframes sparkFly {
+  0%  { opacity:1; transform:translate(0,0) scale(1); }
+  100%{ opacity:0; transform:translate(var(--tx),var(--ty)) scale(0); }
+}
+
+/* Pause resume countdown */
+#pauseCountdown {
+  position: fixed; inset: 0;
+  display: none; justify-content: center; align-items: center;
+  background: rgba(6,12,8,0.88); z-index: 8500; backdrop-filter: blur(8px);
+  flex-direction: column; gap: 12px;
+}
+#pauseCountNum {
+  font-size: 160px; font-weight: 800; letter-spacing: -0.06em;
+  color: var(--forest); line-height: 1;
+  text-shadow: 0 0 80px rgba(106,170,122,0.5);
+  animation: countPulse 1s ease infinite;
+}
+#pauseCountLabel {
+  font-family: 'DM Mono', monospace; font-size: 11px;
+  letter-spacing: 0.3em; color: var(--text-dim); text-transform: uppercase;
+}
+
+/* START SCREEN */
+#startScreen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9000; }
+#startScreen::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 80% 60% at 20% 10%, rgba(45,90,61,0.35) 0%, transparent 60%), radial-gradient(ellipse 60% 50% at 80% 90%, rgba(0,80,140,0.2) 0%, transparent 55%); pointer-events: none; animation: auroraShift 12s ease-in-out infinite alternate; }
+@keyframes auroraShift { 0%{opacity:0.6} 50%{opacity:1} 100%{opacity:0.7} }
+
+.start-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; position: relative; z-index: 1; animation: fadeUp 0.6s ease 0.1s both; }
+.logo-mark { width: 38px; height: 38px; background: linear-gradient(135deg, var(--sage), var(--forest)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 0 20px rgba(106,170,122,0.3); }
+.logo-text { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.3em; color: var(--text-dim); text-transform: uppercase; }
+
+.start-title { font-size: clamp(48px, 9vw, 80px); font-weight: 800; letter-spacing: -0.04em; line-height: 0.95; color: var(--text); text-align: center; position: relative; z-index: 1; animation: fadeUp 0.6s ease 0.2s both; margin-bottom: 10px; }
+.start-title span { color: var(--forest); }
+.start-sub { font-size: 14px; font-weight: 300; color: var(--text-dim); margin-bottom: 36px; position: relative; z-index: 1; animation: fadeUp 0.6s ease 0.3s both; }
+
+.input-row { display: flex; gap: 10px; position: relative; z-index: 1; animation: fadeUp 0.6s ease 0.4s both; margin-bottom: 4px; flex-wrap: wrap; justify-content: center; }
+.field { background: rgba(21,42,30,0.7); border: 1.5px solid var(--border-md); border-radius: 10px; padding: 11px 14px; font-family: 'Sora', sans-serif; font-size: 14px; color: var(--text); outline: none; transition: border-color 0.2s, box-shadow 0.2s; width: 200px; backdrop-filter: blur(8px); }
+.field::placeholder { color: var(--text-dim); }
+.field:focus { border-color: var(--border-hi); box-shadow: 0 0 0 3px rgba(106,170,122,0.1); }
+.field.error { border-color: rgba(224,85,85,0.6); animation: shake 0.3s ease; }
+select.field { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='rgba(180,220,185,0.5)' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; cursor: pointer; }
+select.field option { background: #152a1e; color: var(--text); }
+#companyOther { display: none; width: 200px; margin-top: 8px; }
+#norwastePass { display: none; width: 200px; margin-top: 8px; }
+#norwastePass.wrong { border-color: rgba(224,85,85,0.6); animation: shake 0.3s ease; }
+
+/* LB filter buttons */
+.lb-filters { display: flex; gap: 8px; margin-bottom: 16px; position: relative; z-index: 1; flex-wrap: wrap; justify-content: center; }
+.lb-filter-btn { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; padding: 7px 16px; border-radius: 99px; border: 1px solid var(--border-md); background: transparent; color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
+.lb-filter-btn:hover { border-color: var(--border-hi); color: var(--text); }
+.lb-filter-btn.active { background: rgba(106,170,122,0.15); border-color: var(--border-hi); color: var(--forest); }
+
+/* Norwaste best box on end screen */
+#norwasteBox { position: relative; z-index: 1; width: 100%; max-width: 480px; margin-bottom: 12px; }
+.norwaste-best { display: flex; align-items: center; gap: 12px; background: rgba(46,168,213,0.08); border: 1px solid rgba(46,168,213,0.25); border-radius: 10px; padding: 10px 14px; }
+.norwaste-label { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--nw-blue); margin-bottom: 2px; }
+.norwaste-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.norwaste-score { font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 700; color: var(--nw-blue); margin-left: auto; flex-shrink: 0; }
+.norwaste-diff { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+
+.required-hint { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em; text-align: center; position: relative; z-index: 1; animation: fadeUp 0.6s ease 0.42s both; margin-bottom: 20px; }
+
+.mode-row { display: flex; gap: 10px; position: relative; z-index: 1; animation: fadeUp 0.6s ease 0.5s both; }
+.mode-card { background: rgba(21,42,30,0.7); border: 1.5px solid var(--border-md); border-radius: 16px; padding: 18px 16px 16px; width: 156px; cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; gap: 6px; backdrop-filter: blur(10px); }
+.mode-card:hover { transform: translateY(-3px); border-color: var(--border-hi); box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.mode-card.primary { background: linear-gradient(145deg, var(--sage), #1d4a2d); border-color: rgba(106,170,122,0.4); box-shadow: 0 4px 20px rgba(74,124,89,0.25); }
+.mode-card.primary:hover { box-shadow: 0 10px 36px rgba(74,124,89,0.4); }
+.mode-card.lb-card { border-color: rgba(201,168,76,0.25); }
+.mode-card.lb-card:hover { border-color: rgba(201,168,76,0.5); box-shadow: 0 8px 32px rgba(201,168,76,0.1); }
+.mode-icon { font-size: 24px; line-height: 1; }
+.mode-title { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.mode-card.primary .mode-title { color: #e8f5ec; }
+.mode-desc { font-size: 11px; font-weight: 300; line-height: 1.4; color: var(--text-dim); }
+.mode-card.primary .mode-desc { color: rgba(220,240,225,0.65); }
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+/* COUNTDOWN */
+#countdown { position: fixed; inset: 0; display: none; justify-content: center; align-items: center; background: var(--bg); z-index: 9500; flex-direction: column; gap: 12px; }
+#countNum { font-size: 180px; font-weight: 800; letter-spacing: -0.06em; color: var(--forest); line-height: 1; animation: countPulse 1s ease infinite; text-shadow: 0 0 80px rgba(106,170,122,0.4); }
+@keyframes countPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+#countLabel { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.3em; color: var(--text-dim); text-transform: uppercase; }
+
+/* PAUSE */
+#pauseOverlay { position: fixed; inset: 0; display: none; justify-content: center; align-items: center; background: rgba(6,12,8,0.88); z-index: 8500; backdrop-filter: blur(8px); flex-direction: column; gap: 10px; }
+.pause-icon { font-size: 48px; line-height: 1; }
+.pause-title { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; color: var(--text); }
+.pause-sub { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.2em; color: var(--text-dim); text-transform: uppercase; }
+.pause-warning { font-size: 13px; color: var(--amber); margin-top: 4px; margin-bottom: 18px; opacity: 0.85; }
+.resume-btn { background: linear-gradient(135deg, var(--sage), #1d4a2d); border: 1px solid rgba(106,170,122,0.35); border-radius: 12px; padding: 14px 36px; font-family: 'Sora', sans-serif; font-size: 16px; font-weight: 700; color: #e8f5ec; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 24px rgba(74,124,89,0.3); }
+.resume-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(74,124,89,0.45); }
+
+/* EXPLORER */
+#explorerPanel { position: absolute; top: 16px; left: 16px; z-index: 1000; display: none; flex-direction: column; gap: 10px; width: 260px; }
+#searchCard { padding: 14px 16px; }
+.search-wrap { position: relative; margin-top: 8px; }
+#searchInput { width: 100%; background: rgba(11,24,18,0.7); border: 1.5px solid var(--border-md); border-radius: 10px; padding: 9px 14px 9px 34px; font-family: 'Sora', sans-serif; font-size: 14px; color: var(--text); outline: none; transition: border-color 0.2s; }
+#searchInput:focus { border-color: var(--border-hi); }
+#searchInput::placeholder { color: var(--text-dim); }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-dim); font-size: 14px; pointer-events: none; }
+#searchResults { margin-top: 6px; max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.result-item { padding: 7px 10px; border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--text-mid); transition: background 0.12s; }
+.result-item:hover { background: rgba(106,170,122,0.08); color: var(--text); }
+.result-item.active { background: rgba(106,170,122,0.14); font-weight: 600; color: var(--forest); }
+.no-results { font-size: 13px; color: var(--text-dim); padding: 6px 10px; }
+#explorerHint { padding: 12px 14px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+#explorerHint strong { color: var(--forest); font-weight: 600; }
+
+#mapTooltip { position: fixed; display: none; background: rgba(21,42,30,0.95); border: 1px solid var(--border-hi); border-radius: 10px; padding: 7px 13px; font-family: 'DM Mono', monospace; font-size: 13px; color: var(--forest); pointer-events: none; z-index: 2000; box-shadow: 0 4px 20px rgba(0,0,0,0.4); white-space: nowrap; backdrop-filter: blur(8px); }
+
+/* END SCREEN */
+#endScreen { position: fixed; inset: 0; display: none; justify-content: center; align-items: center; background: rgba(6,12,8,0.94); z-index: 9200; backdrop-filter: blur(12px); flex-direction: column; overflow-y: auto; padding: 24px; }
+#endScreen::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 40% at 50% 40%, rgba(45,90,61,0.2) 0%, transparent 65%); pointer-events: none; }
+.end-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.25em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px; position: relative; z-index: 1; }
+.end-title { font-size: clamp(44px, 7vw, 72px); font-weight: 800; letter-spacing: -0.04em; color: var(--text); margin-bottom: 20px; position: relative; z-index: 1; line-height: 1; }
+.end-title span { color: var(--forest); }
+.end-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-bottom: 18px; position: relative; z-index: 1; max-width: 480px; width: 100%; }
+.end-stat { background: rgba(21,42,30,0.7); border: 1px solid var(--border-md); border-radius: 12px; padding: 12px; text-align: center; backdrop-filter: blur(8px); }
+.end-stat-val { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; margin-bottom: 3px; }
+.end-stat-label { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.18em; color: var(--text-dim); text-transform: uppercase; }
+
+.end-lb { position: relative; z-index: 1; width: 100%; max-width: 480px; margin-bottom: 18px; }
+.end-lb-title { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.25em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px; text-align: center; }
+.end-lb-rows { display: flex; flex-direction: column; gap: 5px; }
+
+.lb-row { display: flex; align-items: center; gap: 12px; background: rgba(21,42,30,0.7); border: 1px solid var(--border-md); border-radius: 10px; padding: 9px 14px; backdrop-filter: blur(8px); }
+.lb-row.highlighted { border-color: var(--border-hi); background: rgba(106,170,122,0.08); box-shadow: 0 0 20px rgba(106,170,122,0.1); }
+.lb-row.separator { background: transparent; border: none; box-shadow: none; justify-content: center; padding: 2px 0; }
+.lb-row.separator span { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 0.2em; }
+.lb-rank { font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500; width: 26px; text-align: center; flex-shrink: 0; }
+.lb-rank.gold{color:var(--gold)} .lb-rank.silver{color:var(--silver)} .lb-rank.bronze{color:var(--bronze)} .lb-rank.you{color:var(--forest);font-weight:700}
+.lb-info { flex: 1; min-width: 0; }
+.lb-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-name.you { color: var(--forest); }
+.lb-company { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-score { font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 700; color: var(--forest); flex-shrink: 0; }
+
+.end-actions { display: flex; gap: 10px; position: relative; z-index: 1; }
+.end-btn { background: linear-gradient(135deg, var(--sage), #1d4a2d); border: 1px solid rgba(106,170,122,0.35); border-radius: 12px; padding: 12px 26px; font-family: 'Sora', sans-serif; font-size: 15px; font-weight: 700; color: #e8f5ec; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 16px rgba(74,124,89,0.25); }
+.end-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(74,124,89,0.4); }
+.end-btn.secondary { background: rgba(21,42,30,0.7); border: 1px solid var(--border-md); color: var(--text-mid); box-shadow: none; }
+.end-btn.secondary:hover { border-color: var(--border-hi); color: var(--text); }
+#saveStatus { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--text-dim); margin-top: 10px; position: relative; z-index: 1; min-height: 16px; text-align: center; }
+
+/* FULL LEADERBOARD */
+#lbScreen { position: fixed; inset: 0; display: none; justify-content: center; align-items: center; background: rgba(6,12,8,0.96); z-index: 9100; backdrop-filter: blur(12px); flex-direction: column; padding: 40px 24px; overflow-y: auto; }
+#lbScreen::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 40% at 50% 30%, rgba(45,90,61,0.18) 0%, transparent 65%); pointer-events: none; }
+.lb-screen-header { position: relative; z-index: 1; text-align: center; margin-bottom: 24px; }
+.lb-screen-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.25em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 6px; }
+.lb-screen-title { font-size: clamp(36px, 6vw, 56px); font-weight: 800; letter-spacing: -0.04em; color: var(--text); line-height: 1; }
+.lb-full-list { position: relative; z-index: 1; width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 5px; margin-bottom: 24px; }
+.lb-full-row { display: flex; align-items: center; gap: 14px; background: rgba(21,42,30,0.7); border: 1px solid var(--border-md); border-radius: 12px; padding: 12px 16px; backdrop-filter: blur(8px); animation: fadeUp 0.4s ease both; }
+.lb-full-row:nth-child(1){animation-delay:.05s} .lb-full-row:nth-child(2){animation-delay:.1s} .lb-full-row:nth-child(3){animation-delay:.15s} .lb-full-row:nth-child(n+4){animation-delay:.2s}
+.lb-full-row.top1{border-color:rgba(201,168,76,0.4);background:rgba(201,168,76,0.06);box-shadow:0 0 24px rgba(201,168,76,0.08)}
+.lb-full-row.top2{border-color:rgba(138,154,142,0.3)} .lb-full-row.top3{border-color:rgba(160,112,80,0.3)}
+.lb-full-rank{font-family:'DM Mono',monospace;font-size:14px;font-weight:700;width:32px;text-align:center;flex-shrink:0}
+.lb-full-rank.r1{color:var(--gold);font-size:20px} .lb-full-rank.r2{color:var(--silver)} .lb-full-rank.r3{color:var(--bronze)}
+.lb-full-info{flex:1;min-width:0} .lb-full-name{font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .lb-full-meta{font-size:11px;color:var(--text-dim);margin-top:1px}
+.lb-full-right{text-align:right;flex-shrink:0} .lb-full-score{font-family:'DM Mono',monospace;font-size:18px;font-weight:700;color:var(--forest)} .lb-full-acc{font-size:11px;color:var(--text-dim);margin-top:1px}
+.lb-loading{font-family:'DM Mono',monospace;font-size:12px;color:var(--text-dim);letter-spacing:.15em;text-align:center;padding:24px}
+.back-btn { position: relative; z-index: 1; background: rgba(21,42,30,0.8); border: 1px solid var(--border-md); border-radius: 12px; padding: 12px 28px; font-family: 'Sora', sans-serif; font-size: 14px; font-weight: 600; color: var(--text-mid); cursor: pointer; transition: all 0.2s; backdrop-filter: blur(8px); }
+.back-btn:hover { border-color: var(--border-hi); color: var(--text); transform: translateY(-1px); }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="particles"></div>
+<div id="confetti"></div>
+<div id="mapTooltip"></div>
+<div id="toast"></div>
+<div id="streakBadge"></div>
+<div id="bonusFlash"></div>
+<div id="bigStreak"></div>
+
+<button id="homeBtn" onclick="confirmHome()">← Avslutt</button>
+<button id="muteBtn" onclick="toggleMute()" title="Lyd av/på">🔊</button>
+
+<!-- STREAK BATTERY -->
+<div id="battery">
+  <div id="batteryWrap"><div id="batteryFill"></div></div>
+  <div id="batteryCount">0/5</div>
+  <div id="batteryLabel">Streak</div>
+</div>
+
+<!-- GAME HUD -->
+<div id="hud">
+  <div id="targetCard" class="card">
+    <div class="eyebrow">Finn kommunen</div>
+    <div id="target">—</div>
+    <div id="progressWrap"><div id="progressBar"></div></div>
+    <div id="timeBar"><div id="timeBarFill"></div></div>
+  </div>
+  <div id="statsCard" class="card">
+    <div class="stat-block"><div class="eyebrow">Score</div><div class="stat-val v-leaf" id="score">0</div></div>
+    <div class="stat-block"><div class="eyebrow">Streak</div><div class="stat-val v-amber" id="streak">0</div></div>
+    <div class="stat-block"><div class="eyebrow">Presisjon</div><div class="stat-val v-blue" id="accuracy">—</div></div>
+    <div class="stat-block"><div class="eyebrow">Tid</div><div class="stat-val v-sage" id="time">0s</div></div>
+  </div>
+</div>
+
+<!-- EXPLORER PANEL -->
+<div id="explorerPanel">
+  <div id="searchCard" class="card">
+    <div class="eyebrow">Utforsk IKS-kart</div>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input id="searchInput" placeholder="Søk etter IKS..." autocomplete="off" oninput="onSearch()">
+    </div>
+    <div id="searchResults"></div>
+  </div>
+  <div id="explorerHint" class="card">Hover over kommuner for å se hvilken IKS de tilhører.<br><strong>Søk</strong> for å markere et IKS på kartet.</div>
+  <button class="back-btn" style="width:100%;text-align:center;" onclick="location.reload()">← Tilbake til hovedmeny</button>
+</div>
+
+<!-- ACTION BUTTONS -->
+<div id="actions">
+  <button class="btn hint" id="hintBtn" onclick="useHint()">💡 Hint <span id="hintCount">(3)</span></button>
+  <button class="btn skip" onclick="skip()">⏭ Hopp over</button>
+  <button class="btn pause" onclick="togglePause()">⏸ Pause</button>
+</div>
+
+<!-- START SCREEN -->
+<div id="startScreen">
+  <div class="start-logo">
+    <div class="logo-mark">♻️</div>
+  </div>
+  <div class="start-title">IKS<br><span>Mester</span></div>
+  <div class="start-sub">Hvor godt kjenner du norske avfallsselskaper?</div>
+  <div class="input-row">
+    <input class="field" id="name" placeholder="Navn *" autocomplete="off">
+    <select class="field" id="company" onchange="onCompanyChange()">
+      <option value="" disabled selected>Bedrift / IKS *</option>
+      <!-- filled by loadCompanyOptions() -->
+    </select>
+  </div>
+  <div class="input-row" style="animation-delay:0.44s;">
+    <input class="field" id="companyOther" placeholder="Skriv inn bedrift *" autocomplete="off">
+    <input class="field" id="norwastePass" type="password" placeholder="Norwaste-passord *" autocomplete="off">
+  </div>
+  <div class="required-hint">* Påkrevd for å spille</div>
+  <div class="mode-row">
+    <div class="mode-card primary" onclick="startGame()">
+      <div class="mode-icon">🎯</div>
+      <div class="mode-title">Spill</div>
+      <div class="mode-desc">Test deg selv mot klokka</div>
+    </div>
+    <div class="mode-card" onclick="startExplorer()">
+      <div class="mode-icon">🗺</div>
+      <div class="mode-title">Utforsk</div>
+      <div class="mode-desc">Hovre fritt uten press</div>
+    </div>
+    <div class="mode-card lb-card" onclick="showFullLeaderboard()">
+      <div class="mode-icon">🏆</div>
+      <div class="mode-title">Toppliste</div>
+      <div class="mode-desc">Se hvem som leder</div>
+    </div>
+  </div>
+</div>
+
+<!-- COUNTDOWN -->
+<div id="countdown"><div id="countNum">3</div><div id="countLabel">Gjør deg klar...</div></div>
+<div id="pauseCountdown">
+  <div id="pauseCountNum">3</div>
+  <div id="pauseCountLabel">Fortsetter...</div>
+</div>
+
+<!-- PAUSE -->
+<div id="pauseOverlay">
+  <div class="pause-icon">⏸</div>
+  <div class="pause-title">Pause</div>
+  <div class="pause-sub">Spillet er stoppet</div>
+  <div class="pause-warning">⚠ Ny IKS velges automatisk når du fortsetter</div>
+  <button class="resume-btn" onclick="togglePause()">▶ &nbsp;Fortsett spillet</button>
+  <button class="home-pause-btn" onclick="confirmHome()">← Avslutt til hovedmeny</button>
+</div>
+
+<!-- FULL LEADERBOARD -->
+<div id="lbScreen">
+  <div class="lb-screen-header">
+    <div class="lb-screen-eyebrow">Alle tiders</div>
+    <div class="lb-screen-title">🏆 Toppliste</div>
+  </div>
+  <div class="lb-filters">
+    <button class="lb-filter-btn active" onclick="setLbFilter('all',this)">Alle</button>
+    <button class="lb-filter-btn" id="filterMyCompanyBtn" onclick="setLbFilter('company',this)">Min bedrift</button>
+    <button class="lb-filter-btn" onclick="setLbFilter('norwaste',this)">Norwaste</button>
+  </div>
+  <div class="lb-full-list" id="lbFullList"><div class="lb-loading">Laster...</div></div>
+  <div style="display:flex;gap:10px;position:relative;z-index:1;">
+    <button class="back-btn" onclick="hideLbScreen()">← Tilbake</button>
+    <button class="back-btn" onclick="location.reload()">🏠 Hovedmeny</button>
+  </div>
+</div>
+
+<!-- END SCREEN -->
+<div id="endScreen">
+  <div class="end-eyebrow">Spillet er ferdig</div>
+  <div class="end-title">Full<span>ført!</span></div>
+  <div class="end-stats">
+    <div class="end-stat"><div class="end-stat-val" id="endScore" style="color:var(--forest)">0</div><div class="end-stat-label">Poeng</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endAcc" style="color:var(--nw-blue)">0%</div><div class="end-stat-label">Presisjon</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endStreak" style="color:var(--amber)">0</div><div class="end-stat-label">Best streak</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endTime" style="color:#7ab89a">0s</div><div class="end-stat-label">Tid brukt</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endCorrect" style="color:var(--correct)">0</div><div class="end-stat-label">Riktige</div></div>
+    <div class="end-stat"><div class="end-stat-val" id="endSkipped" style="color:var(--text-dim)">0</div><div class="end-stat-label">Hoppet over</div></div>
+  </div>
+  <div id="norwasteBox"></div>
+  <div class="end-lb">
+    <div class="end-lb-title" id="endLbTitle">Din plassering i bedriften</div>
+    <div class="end-lb-rows" id="endLbRows"><div class="lb-loading">Laster...</div></div>
+  </div>
+  <div class="end-actions">
+    <button class="end-btn secondary" onclick="location.reload()">🏠 Hovedmeny</button>
+    <button class="end-btn secondary" onclick="showFullLeaderboard()">🏆 Toppliste</button>
+    <button class="end-btn" onclick="location.reload()">Spill igjen →</button>
+  </div>
+  <div id="saveStatus"></div>
+</div>
+
+<script>
+// ── SUPABASE ──
+const SUPABASE_URL     = 'https://urajclnrqblmetungoco.supabase.co';
+const SUPABASE_ANON_KEY= 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyYWpjbG5ycWJsbWV0dW5nb2NvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzMDMwNDcsImV4cCI6MjA5Mzg3OTA0N30.OrRBTKqNIObYneCIOjmyW32p5h0wjwddcbhqntKXtmw';
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── AUDIO ENGINE ──
+let audioCtx = null;
+let muted = false;
+
+// Beat state
+let beatBpm = 60;
+let beatScheduleAhead = 0.1;   // seconds ahead to schedule
+let beatLookahead = 25.0;      // ms between scheduler calls
+let beatNextTime = 0.0;        // when next beat fires in AudioContext time
+let beatStep = 0;              // which step in the pattern (0-7, 8th notes)
+let beatTimerID = null;
+let beatMasterGain = null;
+
+const BPM_START = 52;
+const BPM_PER_CORRECT = 1;
+
+function getAudio(){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    beatMasterGain = audioCtx.createGain();
+    beatMasterGain.gain.value = 0.55;
+    beatMasterGain.connect(audioCtx.destination);
+  }
+  return audioCtx;
+}
+
+// ── BEAT SCHEDULER ──
+// Pattern: 16 steps (16th notes per bar)
+// Kick on step 0, 8       (beats 1 and 3)
+// Snare on step 4, 12     (beats 2 and 4)
+// Hi-hat every step
+// Clock tick on every even step (8th notes) — tick/tock alternating
+
+// Melodic state
+let barCount = 0;
+
+// Em bassline: E2 G2 A2 B2 — in Hz
+const bassNotes = [82.41, 98.00, 110.00, 123.47];
+// Arpeggio in Em pentatonic going up: E3 G3 A3 B3 E4 G4
+const arpNotes  = [164.81, 196.00, 220.00, 246.94, 329.63, 392.00];
+
+function scheduleBeat(time){
+  const ctx = getAudio();
+  const step = beatStep % 16;
+  const progress = Math.min(correct / 90, 1);
+  const spb = 60 / beatBpm;
+
+  // ── CLOCK TICK — sharp metronome, every 8th note ──
+  if(step % 2 === 0){
+    const isTick = (step % 4 === 0);
+    const tickFreq = isTick ? 1800 : 1400;
+    const tickGain = isTick ? 0.55 : 0.38;
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    osc.type = 'sine'; osc.frequency.value = tickFreq;
+    f.type = 'highpass'; f.frequency.value = 1000;
+    g.gain.setValueAtTime(tickGain, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.018);
+    osc.connect(f); f.connect(g); g.connect(beatMasterGain);
+    osc.start(time); osc.stop(time + 0.022);
+    // Woody body click underneath
+    const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
+    osc2.type = 'triangle'; osc2.frequency.value = tickFreq * 0.5;
+    g2.gain.setValueAtTime(tickGain * 0.3, time);
+    g2.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
+    osc2.connect(g2); g2.connect(beatMasterGain);
+    osc2.start(time); osc2.stop(time + 0.015);
+  }
+
+  // ── HI-HAT — metallic noise, every 16th ──
+  {
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(d.length*0.15));
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const f = ctx.createBiquadFilter(); f.type='highpass'; f.frequency.value=8000;
+    const g = ctx.createGain();
+    g.gain.value = (step%4===0) ? 0.22 : 0.08;
+    src.connect(f); f.connect(g); g.connect(beatMasterGain);
+    src.start(time); src.stop(time+0.04);
+  }
+
+  // ── KICK — round and roomy, deep sub ──
+  if(step===0 || step===8){
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(80, time);
+    osc.frequency.exponentialRampToValueAtTime(35, time+0.25);
+    g.gain.setValueAtTime(0.85, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time+0.45);
+    osc.connect(g); g.connect(beatMasterGain);
+    osc.start(time); osc.stop(time+0.48);
+    // Soft transient
+    const osc2=ctx.createOscillator(); const g2=ctx.createGain();
+    osc2.type='triangle'; osc2.frequency.value=180;
+    g2.gain.setValueAtTime(0.25,time);
+    g2.gain.exponentialRampToValueAtTime(0.001,time+0.02);
+    osc2.connect(g2); g2.connect(beatMasterGain);
+    osc2.start(time); osc2.stop(time+0.025);
+  }
+
+  // ── SNARE — wide noise, roomy ──
+  if(step===4 || step===12){
+    const buf=ctx.createBuffer(1,ctx.sampleRate*0.22,ctx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(d.length*0.55));
+    const src=ctx.createBufferSource(); src.buffer=buf;
+    const f=ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=1400; f.Q.value=0.4;
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.38,time);
+    g.gain.exponentialRampToValueAtTime(0.001,time+0.22);
+    src.connect(f); f.connect(g); g.connect(beatMasterGain);
+    src.start(time); src.stop(time+0.23);
+  }
+
+  // ── BASS — triangle, warm and dark ──
+  if(step%4===0){
+    const noteIndex = Math.floor(step/4) % bassNotes.length;
+    const freq = bassNotes[noteIndex];
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    osc.type='triangle'; osc.frequency.value=freq;
+    f.type='lowpass'; f.frequency.value = 150 + progress*350; f.Q.value=0.8;
+    const noteDur=spb*0.9;
+    g.gain.setValueAtTime(0,time);
+    g.gain.linearRampToValueAtTime(0.45, time+0.06);
+    g.gain.setValueAtTime(0.45, time+noteDur*0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, time+noteDur);
+    osc.connect(f); f.connect(g); g.connect(beatMasterGain);
+    osc.start(time); osc.stop(time+noteDur+0.02);
+  }
+
+  // ── ARPEGGIO — two detuned sines, warm chorus, from 10 correct ──
+  if(correct >= 10){
+    const arpProgress = Math.min((correct-10)/80, 1);
+    const maxArpNote = Math.floor(2 + arpProgress*4);
+    const arpIndex = step % maxArpNote;
+    const freq = arpNotes[arpIndex];
+    const dur = spb*0.5*0.75;
+    const vol = 0.055 + arpProgress*0.065;
+    [-3, +3].forEach(detune=>{
+      const osc=ctx.createOscillator(); const g=ctx.createGain();
+      const f=ctx.createBiquadFilter();
+      osc.type='sine'; osc.frequency.value=freq*(1+detune/1200);
+      f.type='lowpass'; f.frequency.value=900+arpProgress*800; f.Q.value=0.5;
+      g.gain.setValueAtTime(0,time);
+      g.gain.linearRampToValueAtTime(vol*0.5,time+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001,time+dur);
+      osc.connect(f); f.connect(g); g.connect(beatMasterGain);
+      osc.start(time); osc.stop(time+dur+0.01);
+    });
+  }
+
+  // ── DRONE — F#1, from 30 correct ──
+  if(correct >= 30 && step===0){
+    const droneProgress=Math.min((correct-30)/60,1);
+    const osc=ctx.createOscillator(); const g=ctx.createGain();
+    osc.type='sine'; osc.frequency.value=46.25;
+    const barDur=spb*4;
+    const vol=0.055*droneProgress;
+    g.gain.setValueAtTime(vol,time);
+    g.gain.setValueAtTime(vol,time+barDur*0.88);
+    g.gain.linearRampToValueAtTime(0,time+barDur);
+    osc.connect(g); g.connect(beatMasterGain);
+    osc.start(time); osc.stop(time+barDur+0.05);
+  }
+
+  // ── DESCENDING ANSWER FIGURE — B4→G4→E4 every 4 bars ──
+  if(barCount % 4 === 3 && step===8){
+    [493.88, 392.00, 329.63].forEach((freq,i)=>{
+      const delay=i*(spb*0.5);
+      const osc=ctx.createOscillator(); const g=ctx.createGain();
+      osc.type='sine'; osc.frequency.value=freq;
+      g.gain.setValueAtTime(0,time+delay);
+      g.gain.linearRampToValueAtTime(0.12,time+delay+0.08);
+      g.gain.exponentialRampToValueAtTime(0.001,time+delay+spb*0.65);
+      osc.connect(g); g.connect(beatMasterGain);
+      osc.start(time+delay); osc.stop(time+delay+spb*0.7);
+    });
+  }
+
+  beatStep++;
+  if(step===15) barCount++;
+}
+
+function beatScheduler(){
+  const ctx = getAudio();
+  while(beatNextTime < ctx.currentTime + beatScheduleAhead){
+    scheduleBeat(beatNextTime);
+    const secondsPerBeat = 60.0 / beatBpm;
+    const secondsPer16th  = secondsPerBeat / 4;
+    beatNextTime += secondsPer16th;
+  }
+  beatTimerID = setTimeout(beatScheduler, beatLookahead);
+}
+
+function startBeat(){
+  if(beatTimerID) return;
+  const ctx = getAudio();
+  beatBpm = BPM_START;
+  beatStep = 0;
+  beatNextTime = ctx.currentTime + 0.05;
+  beatScheduler();
+}
+
+function stopBeat(){
+  if(beatTimerID){ clearTimeout(beatTimerID); beatTimerID=null; }
+}
+
+function updateBeatTempo(correctSoFar){
+  beatBpm = BPM_START + (correctSoFar * BPM_PER_CORRECT);
+}
+
+function fadeBeatOut(){
+  if(!beatMasterGain) return;
+  const ctx = getAudio();
+  beatMasterGain.gain.setValueAtTime(beatMasterGain.gain.value, ctx.currentTime);
+  beatMasterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.5);
+  setTimeout(stopBeat, 1600);
+}
+
+
+function playTone(freq, type, duration, gainVal, delay=0){
+  if(muted) return;
+  try {
+    const ctx = getAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+    gain.gain.setValueAtTime(gainVal, ctx.currentTime + delay);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
+    osc.start(ctx.currentTime + delay);
+    osc.stop(ctx.currentTime + delay + duration + 0.05);
+  } catch(e){}
+}
+
+function playCorrect(){
+  playTone(523, 'sine', 0.12, 0.28);
+  playTone(659, 'sine', 0.12, 0.22, 0.08);
+  playTone(784, 'sine', 0.16, 0.18, 0.16);
+}
+
+function playWrong(){
+  playTone(300, 'sawtooth', 0.08, 0.2);
+  playTone(220, 'sawtooth', 0.15, 0.15, 0.08);
+}
+
+function playSkip(){
+  playTone(440, 'sine', 0.06, 0.15);
+  playTone(380, 'sine', 0.1,  0.1, 0.07);
+}
+
+function playStreakBonus(){
+  [523,659,784,1047].forEach((f,i)=>playTone(f,'sine',0.18,0.3,i*0.08));
+}
+
+function playCountTick(){
+  playTone(880,'sine',0.1,0.25);
+}
+
+function playStart(){
+  [392,494,587,784].forEach((f,i)=>playTone(f,'sine',0.2,0.3,i*0.1));
+}
+
+function playFinish(){
+  [523,659,784,1047,1319].forEach((f,i)=>playTone(f,'triangle',0.25,0.35,i*0.1));
+}
+
+function toggleMute(){
+  muted = !muted;
+  document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+  if(beatMasterGain){
+    const ctx = getAudio();
+    beatMasterGain.gain.setValueAtTime(muted ? 0 : 0.55, ctx.currentTime);
+  }
+}
+
+// ── MAP ──
+const map = L.map('map',{zoomControl:true}).setView([64.5,12],5);
+map.setMaxBounds([[55,-5],[73,35]]);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'',maxZoom:18}).addTo(map);
+
+// ── STATE ──
+let geoLayer, allIKS=[], remaining=[], currentTarget;
+let score=0, streak=0, maxStreak=0, correct=0, wrong=0, skipped=0;
+let startTime, timerInterval, timeBarInterval;
+let paused=false, pauseStart=0, pauseTotal=0;
+let totalIKS=0, appMode='', searchHighlighted=null, myRank=null;
+let questionStart=0;           // when current question started
+let cooldown=false;            // brief lock after wrong answer
+const BATTERY_MAX=5;           // streak hits needed for bonus
+const BONUS_POINTS=25;
+const MAX_TIME_SECS=15;        // full time window per question
+const TIME_DRAIN_PER_SEC=1;    // points lost per second of waiting
+
+// ── VALIDATION ──
+
+// ── MODES ──
+function startGame(){
+  if(!validateFields()) return;
+  appMode='game';
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('hud').style.display='block';
+  document.getElementById('actions').style.display='flex';
+  document.getElementById('homeBtn').style.display='block';
+  document.getElementById('muteBtn').style.display='block';
+  document.getElementById('battery').style.display='flex';
+  countdown(()=>{
+    playStart();
+    startTime=Date.now();
+    timerInterval=setInterval(()=>{
+      if(paused)return;
+      document.getElementById('time').innerText=Math.floor((Date.now()-startTime-pauseTotal)/1000)+'s';
+    },200);
+    loadMap('game');
+  });
+}
+
+function startExplorer(){
+  appMode='explorer';
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('explorerPanel').style.display='flex';
+  document.getElementById('homeBtn').style.display='block';
+  document.getElementById('muteBtn').style.display='block';
+  loadMap('explorer');
+}
+
+// ── COUNTDOWN ──
+function countdown(cb){
+  let c=3;
+  const el=document.getElementById('countdown'), num=document.getElementById('countNum');
+  el.style.display='flex'; num.innerText=c; playCountTick();
+  const i=setInterval(()=>{
+    c--;
+    if(c===0){ clearInterval(i); el.style.display='none'; cb(); }
+    else { num.innerText=c; playCountTick(); }
+  },1000);
+}
+
+// ── LOAD MAP ──
+function loadMap(mode){
+  fetch('./05.04_spill_iks_4326.geojson').then(r=>r.json()).then(data=>{
+    allIKS=[...new Set(data.features.map(f=>f.properties.IKS))].sort();
+    loadCompanyOptions(allIKS);
+    remaining=[...allIKS]; totalIKS=remaining.length;
+    geoLayer=L.geoJSON(data,{
+      style:()=>defaultStyle(),
+      onEachFeature:(f,l)=>{
+        const iks=f.properties.IKS; l._iksName=iks;
+        l.on('mouseover',e=>{
+          if(l._locked)return;
+          if(appMode==='explorer'||!paused) l.setStyle(hoverStyle());
+          if(appMode==='explorer') showTooltip(e.originalEvent.clientX,e.originalEvent.clientY,iks);
+        });
+        l.on('mousemove',e=>{ if(appMode==='explorer') moveTooltip(e.originalEvent.clientX,e.originalEvent.clientY); });
+        l.on('mouseout',()=>{
+          hideTooltip();
+          if(l._locked)return;
+          if(appMode==='explorer'&&searchHighlighted&&l._iksName===searchHighlighted){ l.setStyle(highlightStyle()); return; }
+          geoLayer.resetStyle(l);
+        });
+        l.on('click',e=>{ if(appMode==='game') handleClick(iks,l,e); });
+      }
+    }).addTo(map);
+    map.fitBounds(geoLayer.getBounds(),{padding:[20,20]});
+    if(mode==='game'){ next(); updateUI(); }
+  });
+}
+
+function defaultStyle(){ return {color:'#1a3a2a',weight:1.2,fillColor:'#1e4030',fillOpacity:0.65}; }
+function hoverStyle()  { return {color:'#2ea8d5',weight:2,fillColor:'#4a7c59',fillOpacity:0.85}; }
+function highlightStyle(){ return {color:'#2ea8d5',weight:2.5,fillColor:'#2ea8d5',fillOpacity:0.35}; }
+
+// ── TIME BAR ──
+function startTimeBar(){
+  clearInterval(timeBarInterval);
+  questionStart=Date.now();
+  const fill=document.getElementById('timeBarFill');
+  fill.style.width='100%';
+  fill.style.background='var(--forest)';
+  timeBarInterval=setInterval(()=>{
+    if(paused)return;
+    const elapsed=(Date.now()-questionStart)/1000;
+    const pct=Math.max(0,1-elapsed/MAX_TIME_SECS)*100;
+    fill.style.width=pct+'%';
+    if(pct<33) fill.style.background='var(--wrong)';
+    else if(pct<66) fill.style.background='var(--amber)';
+    else fill.style.background='var(--forest)';
+  },80);
+}
+
+function getTimePenalty(){
+  // Returns points to subtract based on how long they waited
+  const elapsed=(Date.now()-questionStart)/1000;
+  return Math.floor(Math.min(elapsed,MAX_TIME_SECS)*TIME_DRAIN_PER_SEC);
+}
+
+// ── CLICK HANDLER ──
+function handleClick(iks,l,e){
+  if(paused||cooldown)return;
+  if(iks===currentTarget){
+    const timePenalty=getTimePenalty();
+    correct++; streak++; maxStreak=Math.max(maxStreak,streak);
+    const streakBonus=Math.min(streak,10);
+    const earned=Math.max(5, 10+streakBonus-timePenalty);
+    score+=earned;
+
+    l._locked=true;
+    l.setStyle({color:'#3ecf6e',weight:2,fillColor:'#2d7a4f',fillOpacity:0.85});
+    remaining=remaining.filter(x=>x!==iks);
+
+    playCorrect();
+    showToast('✓','#3ecf6e');
+    showScorePopup(e.originalEvent.clientX,e.originalEvent.clientY,`+${earned}`);
+    spawnParticles(e.originalEvent.clientX,e.originalEvent.clientY,'#3ecf6e');
+
+    if(streak>1) showStreakBadge(streak);
+    if(streak>=3) showBigStreak(streak);
+
+    updateBattery(streak%BATTERY_MAX);
+    // Fire bonus at every multiple of BATTERY_MAX
+    if(streak>0 && streak%BATTERY_MAX===0){
+      score+=BONUS_POINTS;
+      fireStreakBonus();
+    }
+
+    updateBeatTempo(correct);
+    updateHotStreak(streak);
+    next();
+  } else {
+    wrong++; streak=0;
+    l.setStyle({color:'#e05555',weight:2,fillColor:'#8b2020',fillOpacity:0.65});
+    playWrong();
+    showToast('✗','#e05555');
+    spawnParticles(e.originalEvent.clientX,e.originalEvent.clientY,'#e05555');
+
+    // Brief cooldown
+    cooldown=true;
+    setTimeout(()=>{ if(!l._locked)geoLayer.resetStyle(l); cooldown=false; },500);
+
+    updateBattery(0);
+    updateHotStreak(0);
+  }
+  updateUI();
+}
+
+// ── BATTERY ──
+function updateBattery(currentInCycle){
+  const fill=document.getElementById('batteryFill');
+  const count=document.getElementById('batteryCount');
+  const pct=(currentInCycle/BATTERY_MAX)*100;
+  fill.style.height=pct+'%';
+  count.innerText=currentInCycle+'/'+BATTERY_MAX;
+  if(pct>=100){ fill.classList.add('full'); } else { fill.classList.remove('full'); }
+}
+
+function fireStreakBonus(){
+  playStreakBonus();
+  const el=document.getElementById('bonusFlash');
+  el.innerText='🔥 +'+BONUS_POINTS+' BONUS!';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  // Reset battery visually then refill from 0
+  setTimeout(()=>updateBattery(0),400);
+  spawnParticles(window.innerWidth-30,window.innerHeight/2,'#d4a84b',20);
+}
+
+// ── HOT STREAK GLOW ──
+function updateHotStreak(s){
+  const card=document.getElementById('targetCard');
+  card.classList.remove('hot1','hot2');
+  if(s>=5) card.classList.add('hot2');
+  else if(s>=3) card.classList.add('hot1');
+}
+
+// ── ANIMATED SCORE COUNTER ──
+function animateScore(from, to){
+  const el=document.getElementById('score');
+  const diff=to-from;
+  if(diff===0) return;
+  const steps=12, duration=300;
+  let step=0;
+  el.classList.add('bump');
+  setTimeout(()=>el.classList.remove('bump'),300);
+  const interval=setInterval(()=>{
+    step++;
+    const progress=step/steps;
+    const eased=1-Math.pow(1-progress,3);
+    el.innerText=Math.round(from+diff*eased);
+    if(step>=steps){ el.innerText=to; clearInterval(interval); }
+  }, duration/steps);
+}
+
+let displayedScore=0;
+
+// ── NEXT ──
+function next(){
+  if(remaining.length===0){ end(); return; }
+  currentTarget=remaining[Math.floor(Math.random()*remaining.length)];
+  animateTarget(currentTarget);
+  startTimeBar();
+}
+
+function animateTarget(txt){
+  const el=document.getElementById('target');
+  el.style.opacity='0'; el.style.transform='translateY(5px)';
+  setTimeout(()=>{ el.innerText=txt; el.style.transition='all 0.2s ease'; el.style.opacity='1'; el.style.transform='translateY(0)'; },70);
+}
+
+// ── HINT ──
+let hintsLeft = 3;
+const HINT_COST = 15;
+
+function useHint(){
+  if(paused||hintsLeft<=0)return;
+  hintsLeft--;
+  score=Math.max(0,score-HINT_COST);
+  displayedScore=score;
+  document.getElementById('score').innerText=score;
+
+  // Find which region the target belongs to and highlight it briefly
+  const affected=[];
+  geoLayer.eachLayer(l=>{
+    if(l.feature?.properties?.IKS===currentTarget && !l._locked){
+      affected.push(l);
+      l.setStyle({color:'#d4a84b',weight:3,fillColor:'#d4a84b',fillOpacity:0.35});
+    }
+  });
+  // Pulse off after 1.8s
+  setTimeout(()=>{
+    affected.forEach(l=>{ if(!l._locked) geoLayer.resetStyle(l); });
+  },1800);
+
+  playTone(660,'sine',0.1,0.2);
+  playTone(880,'sine',0.15,0.15,0.1);
+
+  const btn=document.getElementById('hintBtn');
+  const cnt=document.getElementById('hintCount');
+  if(hintsLeft===0){
+    btn.disabled=true;
+    cnt.textContent='(0)';
+  } else {
+    cnt.textContent=`(${hintsLeft})`;
+  }
+  showScorePopup(window.innerWidth/2,window.innerHeight/2,`-${HINT_COST}`);
+}
+
+
+function skip(){
+  if(paused)return;
+  clearInterval(timeBarInterval);
+  skipped++; streak=0;
+  const timePenalty=getTimePenalty();
+  score=Math.max(0, score - 8 - Math.floor(timePenalty*0.5));
+  playSkip();
+  geoLayer.eachLayer(l=>{ if(l.feature?.properties?.IKS===currentTarget){ l._locked=true; l.setStyle({color:'#c9a84c',weight:2,fillColor:'#8a6020',fillOpacity:0.65}); }});
+  remaining=remaining.filter(x=>x!==currentTarget);
+  updateBattery(0); updateHotStreak(0);
+  next(); updateUI();
+}
+
+// ── UPDATE UI ──
+function updateUI(){
+  // Animate score
+  const newScore=score;
+  animateScore(displayedScore, newScore);
+  displayedScore=newScore;
+
+  document.getElementById('streak').innerText=streak;
+  const total=correct+wrong+skipped;
+  document.getElementById('accuracy').innerText=total===0?'—':Math.round((correct/total)*100)+'%';
+  document.getElementById('progressBar').style.width=Math.round((correct/totalIKS)*100)+'%';
+}
+
+// ── PAUSE ──
+function togglePause(){
+  if(!paused){
+    // PAUSING
+    paused=true;
+    pauseStart=Date.now();
+    document.body.classList.add('paused');
+    document.getElementById('pauseOverlay').style.display='flex';
+    clearInterval(timeBarInterval);
+    stopBeat();
+  } else {
+    // RESUMING — show countdown first
+    document.getElementById('pauseOverlay').style.display='none';
+    resumeCountdown();
+  }
+}
+
+function resumeCountdown(){
+  let c=3;
+  const el=document.getElementById('pauseCountdown');
+  const num=document.getElementById('pauseCountNum');
+  el.style.display='flex'; num.innerText=c; playCountTick();
+  const i=setInterval(()=>{
+    c--;
+    if(c===0){
+      clearInterval(i);
+      el.style.display='none';
+      // Now actually resume
+      paused=false;
+      pauseTotal+=Date.now()-pauseStart;
+      document.body.classList.remove('paused');
+      questionStart=Date.now();
+      startTimeBar();
+      startBeat();
+      // Anti-cheat: pick new target
+      if(remaining.length>1){
+        const others=remaining.filter(x=>x!==currentTarget);
+        currentTarget=others[Math.floor(Math.random()*others.length)];
+        animateTarget(currentTarget);
+      }
+    } else {
+      num.innerText=c; playCountTick();
+    }
+  },1000);
+}
+
+// ── EXPLORER ──
+function onSearch(){
+  const q=document.getElementById('searchInput').value.trim().toLowerCase();
+  const res=document.getElementById('searchResults');
+  res.innerHTML='';
+  if(searchHighlighted){ clearHighlight(); searchHighlighted=null; }
+  if(!q)return;
+  const matches=allIKS.filter(iks=>iks.toLowerCase().includes(q));
+  if(matches.length===0){ res.innerHTML='<div class="no-results">Ingen treff</div>'; return; }
+  matches.slice(0,8).forEach(iks=>{
+    const div=document.createElement('div'); div.className='result-item'; div.innerText=iks;
+    div.onclick=()=>selectSearchResult(iks,div); res.appendChild(div);
+  });
+}
+
+function selectSearchResult(iks,el){
+  if(searchHighlighted)clearHighlight();
+  document.querySelectorAll('.result-item').forEach(r=>r.classList.remove('active'));
+  el.classList.add('active'); searchHighlighted=iks;
+  const layers=[];
+  geoLayer.eachLayer(l=>{ if(l.feature?.properties?.IKS===iks){ l.setStyle(highlightStyle()); layers.push(l); }});
+  if(layers.length>0){ const g=L.featureGroup(layers); map.fitBounds(g.getBounds(),{padding:[60,60],maxZoom:10}); }
+}
+
+function clearHighlight(){
+  if(!searchHighlighted)return;
+  geoLayer.eachLayer(l=>{ if(l.feature?.properties?.IKS===searchHighlighted&&!l._locked) geoLayer.resetStyle(l); });
+}
+
+// ── TOOLTIP ──
+function showTooltip(x,y,text){ const t=document.getElementById('mapTooltip'); t.innerText=text; t.style.display='block'; t.style.left=(x+14)+'px'; t.style.top=(y-12)+'px'; }
+function moveTooltip(x,y){ const t=document.getElementById('mapTooltip'); t.style.left=(x+14)+'px'; t.style.top=(y-12)+'px'; }
+function hideTooltip(){ document.getElementById('mapTooltip').style.display='none'; }
+
+// ── END ──
+function end(){
+  clearInterval(timerInterval); clearInterval(timeBarInterval);
+  fadeBeatOut();
+  const totalSec=Math.floor((Date.now()-startTime-pauseTotal)/1000);
+  const total=correct+wrong+skipped;
+  const acc=total===0?0:Math.round((correct/total)*100);
+  document.getElementById('endScore').innerText=score;
+  document.getElementById('endAcc').innerText=acc+'%';
+  document.getElementById('endStreak').innerText=maxStreak;
+  document.getElementById('endTime').innerText=totalSec+'s';
+  document.getElementById('endCorrect').innerText=correct;
+  document.getElementById('endSkipped').innerText=skipped;
+  document.getElementById('endScreen').style.display='flex';
+  playFinish();
+  launchConfetti();
+  saveResult(acc, totalSec);
+}
+
+// ── CONFETTI ──
+function launchConfetti(){
+  const container=document.getElementById('confetti');
+  container.innerHTML='';
+  const colors=['#3ecf6e','#2ea8d5','#d4a84b','#6aaa7a','#8fcf9e','#c9a84c','#ffffff','#e05555'];
+
+  // ── Confetti rain from top ──
+  for(let i=0;i<140;i++){
+    const el=document.createElement('div');
+    el.className='confetto';
+    const color=colors[Math.floor(Math.random()*colors.length)];
+    const left=Math.random()*100;
+    const dur=2.5+Math.random()*2.5;
+    const delay=Math.random()*2;
+    const spin=(Math.random()-0.5)*900+'deg';
+    const w=5+Math.random()*9, h=8+Math.random()*12;
+    el.style.cssText=`left:${left}%;top:-20px;width:${w}px;height:${h}px;background:${color};--dur:${dur}s;--delay:${delay}s;--spin:${spin};transform-origin:center;`;
+    container.appendChild(el);
+  }
+
+  // ── Firework bursts — multiple at different times ──
+  const bursts=[
+    {x:20, y:25, delay:100},
+    {x:80, y:20, delay:400},
+    {x:50, y:15, delay:700},
+    {x:15, y:40, delay:1000},
+    {x:85, y:35, delay:1200},
+    {x:60, y:22, delay:1500},
+    {x:35, y:18, delay:1800},
+  ];
+
+  bursts.forEach(b=>{
+    setTimeout(()=>fireworkBurst(container, b.x, b.y, colors), b.delay);
+  });
+
+  setTimeout(()=>container.innerHTML='', 6000);
+}
+
+function fireworkBurst(container, xPct, yPct, colors){
+  const px=window.innerWidth*(xPct/100);
+  const py=window.innerHeight*(yPct/100);
+  const color=colors[Math.floor(Math.random()*colors.length)];
+  const count=40+Math.floor(Math.random()*20);
+
+  // Flash
+  const flash=document.createElement('div');
+  flash.style.cssText=`position:absolute;left:${px}px;top:${py}px;width:6px;height:6px;border-radius:50%;background:white;box-shadow:0 0 12px 6px white;transform:translate(-50%,-50%);pointer-events:none;animation:sparkFly 0.2s ease forwards;--dur:0.2s;--delay:0s;--tx:0px;--ty:0px;`;
+  container.appendChild(flash);
+  setTimeout(()=>flash.remove(),300);
+
+  // Sparks
+  for(let i=0;i<count;i++){
+    const spark=document.createElement('div');
+    spark.className='spark';
+    const angle=(i/count)*Math.PI*2;
+    const speed=80+Math.random()*180;
+    const tx=Math.cos(angle)*speed;
+    const ty=Math.sin(angle)*speed;
+    const size=2+Math.random()*4;
+    const dur=0.6+Math.random()*0.6;
+    const delay=Math.random()*0.05;
+    spark.style.cssText=`left:${px}px;top:${py}px;width:${size}px;height:${size}px;background:${color};box-shadow:0 0 4px ${color};transform:translate(-50%,-50%);--tx:${tx}px;--ty:${ty}px;--dur:${dur}s;--delay:${delay}s;`;
+    container.appendChild(spark);
+    setTimeout(()=>spark.remove(), (dur+delay)*1000+100);
+  }
+
+  // Trailing stars
+  for(let i=0;i<12;i++){
+    setTimeout(()=>{
+      if(!container.isConnected)return;
+      const trail=document.createElement('div');
+      trail.className='spark';
+      const angle=Math.random()*Math.PI*2;
+      const speed=30+Math.random()*60;
+      const size=1+Math.random()*3;
+      const dur=0.4+Math.random()*0.4;
+      trail.style.cssText=`left:${px+(Math.random()-0.5)*40}px;top:${py+(Math.random()-0.5)*40}px;width:${size}px;height:${size}px;background:white;opacity:0.8;transform:translate(-50%,-50%);--tx:${Math.cos(angle)*speed}px;--ty:${Math.sin(angle)*speed}px;--dur:${dur}s;--delay:0s;`;
+      container.appendChild(trail);
+      setTimeout(()=>trail.remove(),(dur)*1000+100);
+    }, i*40);
+  }
+}
+
+// ── COMPANY DROPDOWN ──
+function loadCompanyOptions(iksNames){
+  const sel=document.getElementById('company');
+  while(sel.options.length>1) sel.remove(1);
+  // Norwaste first — password protected
+  const nw=document.createElement('option'); nw.value='Norwaste'; nw.textContent='Norwaste 🔒'; sel.appendChild(nw);
+  const div0=document.createElement('option'); div0.disabled=true; div0.textContent='──────────'; sel.appendChild(div0);
+  iksNames.sort().forEach(name=>{
+    const opt=document.createElement('option');
+    opt.value=name; opt.textContent=name;
+    sel.appendChild(opt);
+  });
+  const div=document.createElement('option'); div.disabled=true; div.textContent='──────────'; sel.appendChild(div);
+  const other=document.createElement('option'); other.value='__annet__'; other.textContent='Annet (skriv inn)'; sel.appendChild(other);
+}
+
+function onCompanyChange(){
+  const sel=document.getElementById('company');
+  const other=document.getElementById('companyOther');
+  const pass=document.getElementById('norwastePass');
+  const val=sel.value;
+  if(val==='__annet__'){
+    other.style.display='block';
+    pass.style.display='none';
+    pass.value='';
+    setTimeout(()=>other.focus(),50);
+  } else if(val==='Norwaste'){
+    other.style.display='none';
+    other.value='';
+    pass.style.display='block';
+    setTimeout(()=>pass.focus(),50);
+  } else {
+    other.style.display='none';
+    other.value='';
+    pass.style.display='none';
+    pass.value='';
+  }
+}
+
+function getCompanyValue(){
+  const sel=document.getElementById('company');
+  if(sel.value==='__annet__') return document.getElementById('companyOther').value.trim();
+  return sel.value;
+}
+
+// ── VALIDATION ──
+function validateFields(){
+  const n=document.getElementById('name');
+  const sel=document.getElementById('company');
+  const other=document.getElementById('companyOther');
+  const pass=document.getElementById('norwastePass');
+  let ok=true;
+  if(!n.value.trim()){ n.classList.add('error'); setTimeout(()=>n.classList.remove('error'),600); ok=false; }
+  if(!sel.value){ sel.classList.add('error'); setTimeout(()=>sel.classList.remove('error'),600); ok=false; }
+  if(sel.value==='__annet__'&&!other.value.trim()){ other.classList.add('error'); setTimeout(()=>other.classList.remove('error'),600); ok=false; }
+  if(sel.value==='Norwaste'){
+    if(pass.value!=='norwaste2026'){
+      pass.classList.add('wrong'); pass.value='';
+      setTimeout(()=>pass.classList.remove('wrong'),600);
+      pass.placeholder='Feil passord — prøv igjen';
+      setTimeout(()=>pass.placeholder='Norwaste-passord *',2000);
+      ok=false;
+    }
+  }
+  return ok;
+}
+
+// ── SUPABASE SAVE ──
+async function saveResult(acc, totalSec){
+  const statusEl=document.getElementById('saveStatus');
+  statusEl.innerText='Lagrer...';
+  const myName=document.getElementById('name').value.trim();
+  const myCompany=getCompanyValue();
+  const payload={ name:myName, company:myCompany, score, accuracy:acc, correct, wrong, skipped, max_streak:maxStreak, tid_sekunder:totalSec };
+  try {
+    const { data:existing } = await db.from('leaderboard').select('id,score').eq('name',myName).eq('company',myCompany).limit(1);
+    if(existing&&existing.length>0){
+      if(score>existing[0].score){ await db.from('leaderboard').update(payload).eq('id',existing[0].id); statusEl.innerText='✓ Nytt toppresultat lagret!'; }
+      else { statusEl.innerText='Ikke bedre enn din beste — ikke lagret'; }
+    } else {
+      await db.from('leaderboard').insert([payload]); statusEl.innerText='✓ Resultat lagret';
+    }
+  } catch(err){ statusEl.innerText='⚠ Nettverksfeil'; }
+  loadEndLeaderboard(myName, myCompany, score);
+}
+
+// ── END LEADERBOARD — topp 3 i bedrift + Norwaste best ──
+async function loadEndLeaderboard(myName, myCompany, myScore){
+  const container=document.getElementById('endLbRows');
+  const titleEl=document.getElementById('endLbTitle');
+  const norwasteBox=document.getElementById('norwasteBox');
+  container.innerHTML='<div class="lb-loading">Laster...</div>';
+  norwasteBox.innerHTML='';
+
+  try {
+    // Fetch all (for rank + norwaste best)
+    const { data:all } = await db.from('leaderboard')
+      .select('name,company,score').order('score',{ascending:false}).limit(500);
+    if(!all){ container.innerHTML='<div class="lb-loading">Kunne ikke laste</div>'; return; }
+
+    // ── Norwaste best ──
+    const norwasteAll=all.filter(r=>r.company&&r.company.toLowerCase()==='norwaste');
+    if(norwasteAll.length>0){
+      const best=norwasteAll[0];
+      const isMe=best.name===myName&&myCompany.toLowerCase()==='norwaste';
+      const diff=best.score-myScore;
+      norwasteBox.innerHTML=`
+        <div class="norwaste-best">
+          <div>
+            <div class="norwaste-label">👑 Beste Norwaste-spiller</div>
+            <div class="norwaste-name">${best.name}${isMe?' (deg)':''}</div>
+            ${!isMe&&diff>0?`<div class="norwaste-diff">${diff} poeng foran deg</div>`:''}
+            ${isMe?`<div class="norwaste-diff">Det er deg! 🎉</div>`:''}
+          </div>
+          <div class="norwaste-score">${best.score}</div>
+        </div>`;
+    }
+
+    // ── Company top 3 ──
+    const companyData=all.filter(r=>r.company&&r.company.toLowerCase()===myCompany.toLowerCase());
+    titleEl.innerText=`Topp 3 — ${myCompany}`;
+
+    if(companyData.length===0){
+      container.innerHTML='<div class="lb-loading">Ingen andre fra din bedrift ennå</div>'; return;
+    }
+
+    // Find my position in company
+    let myCompanyRank=null;
+    for(let i=0;i<companyData.length;i++){
+      if(companyData[i].name===myName){ myCompanyRank=i+1; break; }
+    }
+
+    const top3=companyData.slice(0,3);
+    const myInTop3=myCompanyRank!==null&&myCompanyRank<=3;
+    const rows=top3.map((r,i)=>({...r,rank:i+1,isMe:myName===r.name}));
+    if(!myInTop3&&myCompanyRank!==null){
+      rows.push({_separator:true});
+      rows.push({...companyData[myCompanyRank-1],rank:myCompanyRank,isMe:true});
+    }
+
+    container.innerHTML='';
+    const medals={1:'🥇',2:'🥈',3:'🥉'};
+    rows.forEach(r=>{
+      if(r._separator){ const el=document.createElement('div'); el.className='lb-row separator'; el.innerHTML='<span>· · ·</span>'; container.appendChild(el); return; }
+      const el=document.createElement('div');
+      el.className='lb-row'+(r.isMe?' highlighted':'');
+      const diff=r.isMe?null:(myScore-r.score);
+      el.innerHTML=`
+        <div class="lb-rank ${r.isMe?'you':''}">${medals[r.rank]||'#'+r.rank}</div>
+        <div class="lb-info">
+          <div class="lb-name ${r.isMe?'you':''}">${r.name}${r.isMe?' (deg)':''}</div>
+          ${!r.isMe&&diff!==null?`<div class="lb-company">${diff>0?'+'+diff+' poeng foran':Math.abs(diff)+' poeng bak'}</div>`:''}
+        </div>
+        <div class="lb-score">${r.score}</div>`;
+      container.appendChild(el);
+    });
+
+  } catch(err){ container.innerHTML='<div class="lb-loading">Feil ved lasting</div>'; }
+}
+
+// ── FULL LEADERBOARD with filter ──
+let lbCurrentFilter='all';
+let lbAllData=[];
+
+async function showFullLeaderboard(){
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('endScreen').style.display='none';
+  document.getElementById('lbScreen').style.display='flex';
+
+  // Update "min bedrift" button label
+  const myCompany=getCompanyValue()||'';
+  const btn=document.getElementById('filterMyCompanyBtn');
+  if(btn&&myCompany&&myCompany!=='__annet__') btn.textContent=myCompany;
+
+  const list=document.getElementById('lbFullList');
+  list.innerHTML='<div class="lb-loading">Laster toppliste...</div>';
+  try {
+    const { data } = await db.from('leaderboard')
+      .select('name,company,score,accuracy,tid_sekunder').order('score',{ascending:false}).limit(200);
+    lbAllData=data||[];
+    renderLbList(lbCurrentFilter);
+  } catch(err){ list.innerHTML='<div class="lb-loading">Nettverksfeil</div>'; }
+}
+
+function setLbFilter(filter, btn){
+  lbCurrentFilter=filter;
+  document.querySelectorAll('.lb-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderLbList(filter);
+}
+
+function renderLbList(filter){
+  const list=document.getElementById('lbFullList');
+  const myCompany=(getCompanyValue()||'').toLowerCase();
+  let data=lbAllData;
+  if(filter==='company'&&myCompany){
+    data=lbAllData.filter(r=>r.company&&r.company.toLowerCase()===myCompany);
+  } else if(filter==='norwaste'){
+    data=lbAllData.filter(r=>r.company&&r.company.toLowerCase()==='norwaste');
+  }
+  if(!data||data.length===0){ list.innerHTML='<div class="lb-loading">Ingen resultater her ennå</div>'; return; }
+  list.innerHTML='';
+  data.slice(0,20).forEach((r,i)=>{
+    const rank=i+1;
+    const rc=rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+    const rl=rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':`#${rank}`;
+    const tc=rank===1?'top1':rank===2?'top2':rank===3?'top3':'';
+    const el=document.createElement('div'); el.className=`lb-full-row ${tc}`;
+    el.innerHTML=`
+      <div class="lb-full-rank ${rc}">${rl}</div>
+      <div class="lb-full-info">
+        <div class="lb-full-name">${r.name}</div>
+        <div class="lb-full-meta">${r.company||''}${r.company&&r.accuracy!=null?' · ':''}${r.accuracy!=null?r.accuracy+'% presisjon':''}</div>
+      </div>
+      <div class="lb-full-right">
+        <div class="lb-full-score">${r.score}</div>
+        <div class="lb-full-acc">${r.tid_sekunder!=null?r.tid_sekunder+'s':''}</div>
+      </div>`;
+    list.appendChild(el);
+  });
+}
+
+function hideLbScreen(){
+  document.getElementById('lbScreen').style.display='none';
+  if(appMode===''){ document.getElementById('startScreen').style.display='flex'; }
+  else { document.getElementById('endScreen').style.display='flex'; }
+}
+
+// ── FEEDBACK ──
+function showToast(text,color){ const el=document.getElementById('toast'); el.innerText=text; el.style.color=color; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); }
+function showScorePopup(x,y,text){ const el=document.createElement('div'); el.className='score-popup'; el.innerText=text; el.style.left=(x-16)+'px'; el.style.top=(y-36)+'px'; document.body.appendChild(el); setTimeout(()=>el.remove(),800); }
+
+function showStreakBadge(n){
+  const msgs=['','','🔥 x2','🔥 x3','⚡ x4','⚡ x5','💥 x6','💥 x7','🌟 x8','🌟 x9','👑 x10'];
+  const el=document.getElementById('streakBadge');
+  el.innerText=(msgs[Math.min(n,10)]||`👑 x${n}`)+' streak!';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+
+function showBigStreak(n){
+  const colors={3:'#d4a84b',4:'#e8a030',5:'#ff8c00',6:'#ff6600',7:'#ff4400',8:'#ff2200',9:'#ff1100',10:'#ff0000'};
+  const el=document.getElementById('bigStreak');
+  el.innerText=n;
+  el.style.color=colors[Math.min(n,10)]||'#ff0000';
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+
+function spawnParticles(x,y,color,count=10){
+  const c=document.getElementById('particles');
+  for(let i=0;i<count;i++){
+    const p=document.createElement('div'); p.className='particle';
+    const sz=Math.random()*7+3,ang=Math.random()*Math.PI*2,dist=Math.random()*120+40;
+    p.style.cssText=`width:${sz}px;height:${sz}px;background:${color};left:${x}px;top:${y}px;--tx:${Math.cos(ang)*dist}px;--ty:${Math.sin(ang)*dist}px;animation-delay:${Math.random()*0.1}s;animation-duration:${0.5+Math.random()*0.4}s;box-shadow:0 0 6px ${color};`;
+    c.appendChild(p); setTimeout(()=>p.remove(),900);
+  }
+}
+
+function confirmHome(){ if(confirm('Avslutt?')) location.reload(); }
+
+// Start beat on first user interaction (browser requires this)
+let beatStarted = false;
+function tryStartBeat(){
+  if(beatStarted) return;
+  beatStarted = true;
+  startBeat();
+}
+document.addEventListener('click', tryStartBeat, { once: true });
+document.addEventListener('keydown', e=>{
+  tryStartBeat();
+  if(e.code==='Space'&&appMode==='game'){ e.preventDefault(); togglePause(); }
+  if(e.code==='KeyS'&&appMode==='game'&&!paused) skip();
+  if(e.code==='KeyM') toggleMute();
+});
+
+// Preload IKS names for dropdown on page load
+fetch('./05.04_spill_iks_4326.geojson').then(r=>r.json()).then(data=>{
+  const names=[...new Set(data.features.map(f=>f.properties.IKS))].sort();
+  loadCompanyOptions(names);
+}).catch(()=>{});
+</script>
+</body>
+</html>
